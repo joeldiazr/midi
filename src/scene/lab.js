@@ -343,7 +343,8 @@ export function buildLab(scene, { lowPower = false } = {}) {
       dust.update(simDt, t);
       // parpadeo cálido de las lámparas
       for (let i = 0; i < lanterns.length; i++) {
-        lanterns[i].intensity = 15 * (0.92 + 0.08 * Math.sin(t * 7.1 + i * 2.3) * Math.sin(t * 3.3 + i));
+        const shake = info.rumble ? 1 - info.rumble * (0.15 + 0.35 * Math.random()) : 1; // metro pasando
+        lanterns[i].intensity = 15 * shake * (0.92 + 0.08 * Math.sin(t * 7.1 + i * 2.3) * Math.sin(t * 3.3 + i));
       }
       for (let i = 0; i < 4; i++) {
         const v = info.levels ? info.levels[i] : 0;

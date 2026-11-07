@@ -72,16 +72,11 @@ async function boot() {
   setLoad(0.55);
   await wait(30);
   bolts = new BoltSystem(scene, lab);
-  // cada rayo suena donde cae: paneo según la cámara y volumen según la distancia
-  const tv = new THREE.Vector3(), tr = new THREE.Vector3();
+  // cada rayo suena donde cae (sonido 3D: el oído es la cámara) y toca la nota que esa bobina
+  // "escucha" en la canción en este instante
   bolts.onStrike = (ci, s, pos) => {
-    tv.subVectors(pos, camera.position);
-    const dist = tv.length() || 1;
-    tv.divideScalar(dist);
-    tr.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    // la nota que esa bobina "escucha" en la canción en este instante
     const pc = S.an && S.status === 'playing' ? noteAt(S.an, audio.time, ci) : -1;
-    audio.zap(ci, s, tv.dot(tr) * 0.85, Math.min(1.1, Math.max(0.45, 4 / dist)), pc >= 0 ? noteFreq(pc, ci) : null);
+    audio.zap(ci, s, [pos.x, pos.y, pos.z], pc >= 0 ? noteFreq(pc, ci) : null);
   };
   post = createPost(renderer, scene, camera, { lowPower });
   post.setSize(innerWidth, innerHeight, PR);
@@ -95,7 +90,7 @@ async function boot() {
   renderer.shadowMap.needsUpdate = true;
   setMode('cine');
   frame();
-  if (import.meta.env.DEV) window.__arco = { S, SV, cabin, director, camera, lab, bolts, audio, renderer, post, setMode, loadTrack, togglePause, openSearch, closeSearch };
+  if (import.meta.env.DEV) window.__arco = { frame, S, SV, cabin, director, camera, lab, bolts, audio, renderer, post, setMode, loadTrack, togglePause, openSearch, closeSearch };
   setLoad(1);
   await wait(900);
   body.classList.remove('is-loading');
@@ -547,6 +542,8 @@ const wave = new Float32Array(192);
 const R = rng(31);
 let lastNow = performance.now();
 let simT = 0, freezeAmt = 0, hudT = 0, kick = 0, realT = 0;
+let rumble = 0, rumbleT = 0, rumbleD = 1, stepAcc = 0.6;
+const fwdV = new THREE.Vector3(), upV = new THREE.Vector3();
 let meterEls = null;
 
 function dirCtx() {
@@ -556,7 +553,7 @@ function dirCtx() {
     energy: S.an && (playing || S.status === 'paused') ? energyAt(S.an, S.songT) : 0.3,
     subject: S.an && playing ? busiestCoil(S.an, S.songT, 2.5) : Math.floor(R() * 4),
     bigHit: playing && (onsets[0] > 0.82 || onsets[0] + onsets[1] + onsets[2] + onsets[3] > 2.3),
-    shake: bolts ? bolts.shake : 0, kick,
+    shake: (bolts ? bolts.shake : 0) + rumble * 0.3, kick,
   };
 }
 
@@ -601,7 +598,10 @@ function frame() {
   if (simDt > 0 && bolts.flashI > 0.04) renderer.shadowMap.needsUpdate = true;
   lab.cage.update(simDt, bolts.coilLevel[0]);
   const showWave = S.an && (playing || paused);
-  lab.update(dt, simDt, simT, { levels: bolts.coilLevel, colors: pal, wave: showWave ? waveAt(S.an, S.songT, wave) : null, playing });
+  // metro pasando tras el muro: tiembla un poco la cámara y parpadean los faroles
+  if (rumbleT > 0) rumbleT = Math.max(0, rumbleT - dt);
+  rumble = rumbleT > 0 ? Math.sin(Math.PI * (1 - rumbleT / rumbleD)) : 0;
+  lab.update(dt, simDt, simT, { levels: bolts.coilLevel, colors: pal, wave: showWave ? waveAt(S.an, S.songT, wave) : null, playing, rumble });
   if (audio.ctx) audio.setHum(playing ? 0.2 + (bolts.coilLevel[0] + bolts.coilLevel[1]) * 0.3 : HUM_IDLE);
 
   realT += dt;
@@ -613,9 +613,26 @@ function frame() {
 
   // cámara
   if (!updateScreenCamera(dt)) {
-    if (S.mode === 'cabin') cabin.update(dt, paused ? 0 : bolts.shake, kick);
+    if (S.mode === 'cabin') cabin.update(dt, (paused ? 0 : bolts.shake) + rumble * 0.3, kick);
     else director.update(dt, dirCtx());
     blendFromScreen(dt);
+  }
+
+  // sonido espacial: el oído va con la cámara; ambiente y pasos
+  const sp3 = audio.space;
+  if (sp3) {
+    if (!sp3.ready) { sp3.setScene(lab); sp3.onTrain = (d) => { rumbleT = rumbleD = d; }; }
+    fwdV.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    upV.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    sp3.updateListener(camera, fwdV, upV);
+    sp3.tick(dt, !paused && audio.ctx.state === 'running' && !audio.muted);
+    if (S.mode === 'cabin' && cabin.active && !SV.active) {
+      const v = Math.hypot(cabin.vel.x, cabin.vel.z);
+      if (v > 0.5) {
+        stepAcc += v * dt;
+        if (stepAcc > 0.78) { stepAcc = 0; sp3.footstep(Math.abs(cabin.pos.x) < 1.15 && Math.abs(cabin.pos.z) < 1.15); }
+      } else stepAcc = 0.6; // el primer paso suena casi al arrancar
+    }
   }
   bolts.setPixel(camera, innerHeight * PR);
 

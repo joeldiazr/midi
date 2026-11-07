@@ -1,5 +1,8 @@
 // Motor de audio: reproduce la vista previa como AudioBuffer (pausa exacta), timbre de bobina y zumbido.
 import { buildMixChain, softClipper } from './mixer.js';
+import { Space } from './space.js';
+
+const MUSIC_ROOM = 0.16; // cuánto de la música rebota en la sala (sutil: la mezcla ya trae su propio espacio)
 
 const FADE_IN = 0.9;      // al empezar la canción
 const RESUME_FADE = 0.25; // al reanudar o saltar
@@ -21,27 +24,21 @@ export class AudioEngine {
       const clip = softClipper(ctx);
       clip.output.connect(ctx.destination);
       this.master = ctx.createGain(); this.master.connect(clip.input);
+      // sonido espacial del sótano: sala de piedra, oído en la cámara, ambiente (ver space.js)
+      this.space = new Space(ctx, this.master);
       this.songIn = ctx.createGain();
+      this.musicBus = ctx.createGain(); this.musicBus.connect(this.master);
+      this.space.sendFrom(this.musicBus, MUSIC_ROOM);
       // mezcla centro/lados: quitar voz y timbre de bobina (ver mixer.js)
-      this.mix = buildMixChain(ctx, this.songIn, this.master);
+      this.mix = buildMixChain(ctx, this.songIn, this.musicBus);
       this.mix.setCoil(this.coilMode, ctx.currentTime, 0.001);
       this.mix.setVoices(this.voices, ctx.currentTime, 0.001);
-      // zumbido del transformador: senos suaves (antes era un diente de sierra que sonaba a estática)
-      this.hum = ctx.createGain(); this.hum.gain.value = 0;
-      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 200;
-      for (const [f, a] of [[60, 1], [120, 0.45], [180, 0.12]]) {
-        const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
-        const ga = ctx.createGain(); ga.gain.value = a;
-        o.connect(ga).connect(lp); o.start();
-      }
-      lp.connect(this.hum).connect(this.master);
       this.lastZap = [0, 0, 0, 0];
       // ruido para chasquidos
       const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
       const d = nb.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (Math.random() < 0.2 ? 1 : 0.3);
       this.noise = nb;
-      this.sfx = ctx.createGain(); this.sfx.gain.value = 0.5; this.sfx.connect(this.master);
       this.setHum(HUM_IDLE);
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -156,28 +153,23 @@ export class AudioEngine {
   }
 
   // 0..1; solo reprograma si cambia de verdad
-  setHum(v) {
-    if (!this.ctx) return;
-    const target = v * 0.03;
-    if (Math.abs(target - (this.humTarget ?? -1)) < 0.0004) return;
-    this.humTarget = target;
-    this.hum.gain.setTargetAtTime(target, this.ctx.currentTime, 0.25);
-  }
+  setHum(v) { if (this.ctx) this.space.setHum(v); }
 
   // toque de un rayo: la bobina "canta" la nota que suena en la canción en ese instante
   // (onda cuadrada zumbante con filtro que se cierra, como una bobina musical), más una chispa mínima.
-  // s: fuerza 0..1 · pan: −1 izq … 1 der · near: atenuación por distancia · freq: Hz de la nota (o null)
-  zap(coil, s, pan = 0, near = 1, freq = null) {
+  // s: fuerza 0..1 · pos: [x, y, z] donde cae el rayo (suena ahí, en 3D) · freq: Hz de la nota (o null)
+  zap(coil, s, pos, freq = null) {
     if (!this.ctx || !this.coilMode || this.muted || !this.playing) return;
     const ctx = this.ctx, now = ctx.currentTime;
     if (now - this.lastZap[coil] < (coil === 3 ? 0.11 : 0.07)) return;
     if ((this.voicesOn || 0) >= 14) return; // tope de polifonía
     this.lastZap[coil] = now;
-    const amp = Math.min(1, 0.35 + s * 0.65) * near;
-    const out = ctx.createStereoPanner(); out.pan.value = Math.max(-1, Math.min(1, pan));
-    out.connect(this.sfx);
+    const amp = Math.min(1, 0.35 + s * 0.65);
+    const v = this.space.voice(pos, 0.38, { ref: 3, roll: 1 });
+    const out = ctx.createGain(); out.gain.value = 0.5;
+    out.connect(v.input);
     let ends = 0;
-    const done = () => { if (--ends <= 0) { out.disconnect(); this.voicesOn--; } };
+    const done = () => { if (--ends <= 0) { out.disconnect(); v.dispose(); this.voicesOn--; } };
     this.voicesOn = (this.voicesOn || 0) + 1;
 
     // chispa: apenas un tic de ataque
