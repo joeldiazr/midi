@@ -2,6 +2,15 @@
 import { buildMixChain, softClipper } from './mixer.js';
 import { Space } from './space.js';
 
+// volumen de las notas de cada bobina (I grave … IV aguda); antes 0.22 / 0.16 / 0.11 / 0.075
+export const NOTE_LEVELS = [0.48, 0.35, 0.24, 0.16];
+// saturación suave para que la nota suene a descarga eléctrica
+function makeSat() {
+  const n = 2048, c = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = Math.tanh(x * 2.2) / Math.tanh(2.2); }
+  return c;
+}
+
 const MUSIC_ROOM = 0.16; // cuánto de la música rebota en la sala (sutil: la mezcla ya trae su propio espacio)
 
 const FADE_IN = 0.9;      // al empezar la canción
@@ -183,23 +192,39 @@ export class AudioEngine {
     ends++; n.onended = done;
     if (!freq) return;
 
-    // la nota
-    const LVL = [0.22, 0.16, 0.11, 0.075];
-    const dur = 0.16 + s * 0.26 + (coil === 0 ? 0.12 : 0);
+    // la nota: cuadrada + sierra saturadas, con chisporroteo que late a la misma frecuencia
+    // (como el arco de una bobina musical: cada ciclo de la nota es una descarga)
+    const LVL = NOTE_LEVELS;
+    const dur = 0.18 + s * 0.3 + (coil === 0 ? 0.12 : 0);
+    const peak = amp * LVL[coil];
     const o1 = ctx.createOscillator(); o1.type = 'square'; o1.frequency.value = freq;
-    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = freq * 1.004;
-    const mix2 = ctx.createGain(); mix2.gain.value = 0.5;
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2.2;
-    lp.frequency.setValueAtTime(Math.min(9000, freq * 14), now);
-    lp.frequency.exponentialRampToValueAtTime(Math.max(380, freq * 2.6), now + dur);
+    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = freq * 1.006;
+    const mix2 = ctx.createGain(); mix2.gain.value = 0.55;
+    const drive = ctx.createGain(); drive.gain.value = 2.4;
+    const sat = ctx.createWaveShaper(); sat.curve = this.satCurve || (this.satCurve = makeSat()); sat.oversample = '2x';
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 3;
+    lp.frequency.setValueAtTime(Math.min(10000, freq * 16), now);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(700, freq * 4.5), now + dur);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(amp * LVL[coil], now + 0.004);
-    g.gain.exponentialRampToValueAtTime(amp * LVL[coil] * 0.45, now + 0.05);
+    g.gain.linearRampToValueAtTime(peak, now + 0.003);
+    g.gain.exponentialRampToValueAtTime(peak * 0.5, now + 0.06);
     g.gain.exponentialRampToValueAtTime(0.0005, now + dur);
-    o1.connect(lp); o2.connect(mix2).connect(lp); lp.connect(g).connect(out);
-    o1.start(now); o2.start(now);
-    o1.stop(now + dur + 0.03); o2.stop(now + dur + 0.03);
+    o1.connect(drive); o2.connect(mix2).connect(drive);
+    drive.connect(sat).connect(lp).connect(g).connect(out);
+    // chisporroteo: ruido agudo que se abre y cierra con cada ciclo de la nota
+    const zz = ctx.createBufferSource(); zz.buffer = this.noise; zz.loop = true;
+    const zbp = ctx.createBiquadFilter(); zbp.type = 'bandpass'; zbp.frequency.value = Math.min(7000, Math.max(1800, freq * 6)); zbp.Q.value = 1.2;
+    const gate = ctx.createGain(); gate.gain.value = 0.5;
+    const am = ctx.createGain(); am.gain.value = 0.5;
+    o1.connect(am).connect(gate.gain); // 0.5 ± 0.5: pulsa entre 0 y 1 al ritmo de la nota
+    const zg = ctx.createGain();
+    zg.gain.setValueAtTime(0, now);
+    zg.gain.linearRampToValueAtTime(peak * 0.55, now + 0.003);
+    zg.gain.exponentialRampToValueAtTime(0.0005, now + dur * 0.8);
+    zz.connect(zbp).connect(gate).connect(zg).connect(out);
+    o1.start(now); o2.start(now); zz.start(now, Math.random() * 0.5);
+    o1.stop(now + dur + 0.03); o2.stop(now + dur + 0.03); zz.stop(now + dur + 0.03);
     ends++; o1.onended = done;
   }
 

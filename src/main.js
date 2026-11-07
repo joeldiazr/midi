@@ -248,7 +248,7 @@ function openPanel(id) {
   closePanels();
   const el = $('#' + id);
   el.classList.add('open'); el.setAttribute('aria-hidden', 'false');
-  body.classList.toggle('how-open', id === 'how');
+  body.classList.toggle('how-open', id === 'how' || id === 'credits');
 }
 function closePanels() {
   closeSearch();
@@ -437,7 +437,25 @@ $('#btn-search').addEventListener('click', () => openPanel('search'));
 $('#cta').addEventListener('click', () => openPanel('search'));
 $('#btn-how').addEventListener('click', () => openPanel('how'));
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closePanels));
-$('#logo').addEventListener('click', (e) => { e.preventDefault(); closePanels(); });
+$('#logo').addEventListener('click', (e) => { e.preventDefault(); goHome(); });
+$('#btn-home').addEventListener('click', goHome);
+$('#btn-credits').addEventListener('click', () => openPanel('credits'));
+$('#btn-change').addEventListener('click', () => openSearch());
+$('#btn-resume').addEventListener('click', togglePause);
+
+// volver a la portada: se detiene la canción y el sótano queda en reposo
+function goHome() {
+  closePanels();
+  S.token++; // cancela una carga en curso
+  if (audio.playing) audio.pause();
+  S.status = 'idle'; S.track = null; S.an = null; S.songT = S.prevSongT = 0;
+  body.classList.remove('has-track', 'paused', 'busy-on', 'ui-hidden');
+  $('#btn-ui').setAttribute('aria-pressed', 'false');
+  setPlayLabel();
+  applyPalette(paletteFromHex(DEFAULT_PALETTE));
+  if (S.mode !== 'cine') setMode('cine');
+  else { director.frozen = null; director.cut(dirCtx()); }
+}
 $('#btn-cam').addEventListener('click', () => setMode(S.mode === 'cine' ? 'cabin' : 'cine'));
 $('#btn-play').addEventListener('click', togglePause);
 $('#btn-coil').addEventListener('click', toggleCoil);
