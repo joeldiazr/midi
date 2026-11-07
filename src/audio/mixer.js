@@ -8,8 +8,11 @@
 // · Quitar voz: el centro conserva solo graves (< 170 Hz) y brillos (> 7 kHz), así se va la voz
 //   pero quedan bajo, bombo y platillos. Es una separación aproximada, no IA: lo que también
 //   está centrado en la banda de la voz (caja, a veces un piano o guitarra) se va con ella.
-// · Timbre de bobina: los lados pasan por un amplificador de guitarra simulado
-//   (ecualización, saturación suave con sobremuestreo y gabinete que recorta la aspereza).
+// · Timbre de bobina: los lados pasan por un amplificador simulado (ecualización, saturación
+//   suave con sobremuestreo y un filtro de caja que recorta la aspereza) y suben de nivel.
+
+export const SIDE_BOOST = 1.15;
+export const MID_DUCK = 0.9; // el centro baja un poco para que el volumen total no suba
 
 // Recortador suave: idéntico a la entrada por debajo de 0,75 y curva redonda hasta 0,97 (nunca recorta duro).
 export function softClipper(ctx) {
@@ -55,10 +58,10 @@ export function buildMixChain(ctx, input, output) {
   mid.connect(filt('lowpass', 170)).connect(filt('lowpass', 170)).connect(midLow).connect(midBus);
   mid.connect(filt('highpass', 7000)).connect(filt('highpass', 7000)).connect(midHigh).connect(midBus);
 
-  // lados limpios, o por el amplificador de guitarra
+  // lados limpios, o por el amplificador
   const sideClean = g(1);
   side.connect(sideClean).connect(sideBus);
-  const amp = buildGuitarAmp(ctx, g, filt);
+  const amp = buildCoilAmp(ctx, g, filt);
   const sideFx = g(0);
   side.connect(amp.in); amp.out.connect(sideFx).connect(sideBus);
 
@@ -76,8 +79,11 @@ export function buildMixChain(ctx, input, output) {
     midFull.gain.setTargetAtTime(state.voices ? 1 : 0, when, tc);
     midLow.gain.setTargetAtTime(state.voices ? 0 : 1, when, tc);
     midHigh.gain.setTargetAtTime(state.voices ? 0 : 1, when, tc);
-    sideClean.gain.setTargetAtTime(state.coil ? 0.2 : 1, when, tc);
+    sideClean.gain.setTargetAtTime(state.coil ? 0.1 : 1, when, tc);
     sideFx.gain.setTargetAtTime(state.coil ? 1 : 0, when, tc);
+    // con el timbre activo los lados suben para que el efecto se note
+    sideBus.gain.setTargetAtTime(state.coil ? SIDE_BOOST : 1, when, tc);
+    midBus.gain.setTargetAtTime(state.coil ? MID_DUCK : 1, when, tc);
   };
   return {
     state, amp,
@@ -86,11 +92,11 @@ export function buildMixChain(ctx, input, output) {
   };
 }
 
-// Amplificador de guitarra: pre-ecualizador → saturación suave asimétrica → gabinete 4×12 simulado.
-function buildGuitarAmp(ctx, g, filt) {
+// Amplificador: pre-ecualizador → saturación suave asimétrica → filtro de caja de altavoz.
+function buildCoilAmp(ctx, g, filt) {
   const inp = g(1);
   const pre = [filt('highpass', 110), filt('peaking', 800, 0.7, 5), filt('lowpass', 6500)];
-  const drive = g(5);
+  const drive = g(8);
   const shaper = ctx.createWaveShaper();
   const n = 4096, curve = new Float32Array(n), bias = 0.12, k = 2.6;
   const off = Math.tanh(bias * k);
@@ -105,7 +111,7 @@ function buildGuitarAmp(ctx, g, filt) {
     filt('peaking', 120, 1, 2), filt('peaking', 450, 1.2, -2), filt('peaking', 1700, 1, 3),
     filt('lowpass', 3600, 0.75), filt('lowpass', 3600, 0.75), filt('peaking', 2800, 2, -2),
   ];
-  const makeup = g(0.18);
+  const makeup = g(0.2);
   let node = inp;
   for (const f of pre) node = node.connect(f);
   node = node.connect(drive).connect(shaper);

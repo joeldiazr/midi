@@ -251,9 +251,11 @@ function openPanel(id) {
   closePanels();
   const el = $('#' + id);
   el.classList.add('open'); el.setAttribute('aria-hidden', 'false');
+  body.classList.toggle('how-open', id === 'how');
 }
 function closePanels() {
   closeSearch();
+  body.classList.remove('how-open');
   document.querySelectorAll('.overlay.open').forEach((el) => { el.classList.remove('open'); el.setAttribute('aria-hidden', 'true'); });
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
 }
@@ -417,12 +419,21 @@ $('#results').addEventListener('keydown', (e) => {
   if (e.key === 'ArrowUp') { e.preventDefault(); (li.previousElementSibling || $('#q')).focus(); }
 });
 $('#file').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) loadLocal(f); e.target.value = ''; });
+// arrastrar un archivo sobre la página muestra la zona para soltarlo
+const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+let dragDepth = 0;
+window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; dragDepth++; body.classList.add('dragging'); });
+window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) body.classList.remove('dragging'); });
 window.addEventListener('dragover', (e) => e.preventDefault());
 window.addEventListener('drop', (e) => {
   e.preventDefault();
+  dragDepth = 0; body.classList.remove('dragging');
   const f = e.dataTransfer && e.dataTransfer.files[0];
-  if (f && f.type.startsWith('audio')) loadLocal(f);
+  if (!f) return;
+  if (f.type.startsWith('audio') || /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i.test(f.name)) loadLocal(f);
+  else toast('ESE ARCHIVO NO ES DE AUDIO');
 });
+$('#cta-file').addEventListener('click', () => $('#file').click());
 
 // botones
 $('#btn-search').addEventListener('click', () => openPanel('search'));

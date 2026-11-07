@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>ARCO — Música hecha de rayos</title>
+  <title>MIDI — Música hecha de rayos</title>
   <meta name="description" content="Cuatro bobinas de Tesla en un sótano tocan la canción que busques, disparando rayos contra una cabina de malla." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -17,7 +17,7 @@
   <div class="viewfinder" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
   <header class="top">
-    <a class="logo" href="#" id="logo">ARCO</a>
+    <a class="logo" href="#" id="logo">MIDI</a>
     <div class="shot mono" id="shot" aria-live="polite"><span id="shot-name"></span><span id="shot-meta"></span></div>
     <nav class="nav">
       <button class="round ghost" id="btn-ui" aria-label="Ocultar o mostrar la interfaz" aria-pressed="false" title="Ocultar interfaz (H)"><svg class="eye" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path class="lid" d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle class="pupil" cx="12" cy="12" r="2.8" fill="currentColor"/><path class="slash" d="M4 4l16 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
@@ -39,8 +39,11 @@
       </h1>
       <div class="hero-right">
         <p class="lede mono">Un sótano en Nueva York, un millón de voltios y treinta segundos de música. Busca una canción: las bobinas la tocan disparando arcos contra la cabina.</p>
-        <p class="tribute mono"><b>INSPIRADO EN <em>EL APRENDIZ DE BRUJO</em> (2010)</b>Una de mis películas favoritas. Esto nace de la escena en que Dave lleva a Becky a su laboratorio y las bobinas de Tesla tocan la canción que ella había puesto en su programa de radio.</p>
-        <button class="pill light big" id="cta">ELEGIR UNA CANCIÓN<i class="dots"><b></b><b></b></i></button>
+        <p class="tribute mono"><b>INSPIRADO EN <em>EL APRENDIZ DE BRUJO</em> (2010)</b>Una de mis películas favoritas. Esto nace de la escena en que Dave lleva a Becky a su laboratorio y las bobinas de Tesla tocan la canción que ella había puesto en su programa de radio.<small>Homenaje no oficial, sin relación con Disney ni con los creadores de la película.</small></p>
+        <div class="cta-row">
+          <button class="pill dark big" id="cta-file" title="MP3, WAV, M4A… tu archivo no sale de tu dispositivo">SUBIR MI AUDIO <span class="up">↑</span></button>
+          <button class="pill light big" id="cta">ELEGIR UNA CANCIÓN<i class="dots"><b></b><b></b></i></button>
+        </div>
         <h2 class="it"><span class="line"><span>ELECTRICIDAD</span></span><span class="line"><span>QUE SE ESCUCHA</span></span></h2>
       </div>
     </div>
@@ -52,11 +55,14 @@
       <button class="round close" data-close aria-label="Cerrar">✕</button>
     </div>
     <input id="q" type="search" placeholder="ESCRIBE UNA CANCIÓN" autocomplete="off" spellcheck="false" aria-label="Canción o artista" />
+    <div class="upload-row">
+      <label class="pill light upload">SUBIR MI PROPIO AUDIO <span class="up">↑</span><input type="file" id="file" accept="audio/*" hidden /></label>
+      <span class="mono">MP3, WAV, M4A · o arrástralo a la página · la canción completa, y tu archivo no sale de tu dispositivo</span>
+    </div>
     <div class="chips" id="chips"></div>
     <ol class="results" id="results"></ol>
     <div class="ov-foot mono">
       <span>Vistas previas de 30 s cortesía de Apple Music.</span>
-      <label class="file">¿Tienes un archivo de audio? <u>Súbelo</u><input type="file" id="file" accept="audio/*" hidden /></label>
     </div>
   </section>
 
@@ -66,7 +72,7 @@
       <button class="round close" data-close aria-label="Cerrar">✕</button>
     </div>
     <div class="how-grid">
-      <article><span class="mono">01</span><h3>BUSCA</h3><p>Cualquier canción del catálogo de Apple Music. Se usa su vista previa oficial de 30 segundos.</p></article>
+      <article><span class="mono">01</span><h3>BUSCA</h3><p>Cualquier canción del catálogo de Apple Music. Se usa su vista previa oficial de 30 segundos. O sube tu propio archivo de audio y suena completo.</p></article>
       <article><span class="mono">02</span><h3 class="it">ESCUCHA</h3><p>Antes de sonar, la canción se analiza entera: graves, medios, voces y brillos, cada golpe y el pulso en BPM.</p></article>
       <article><span class="mono">03</span><h3>DISPARA</h3><p>Cada bobina toca una banda. <b>I</b> graves · <b>II</b> medios · <b>III</b> voces · <b>IV</b> brillos. Cada golpe es un rayo contra la cabina.</p></article>
       <article><span class="mono">04</span><h3 class="it">COLOREA</h3><p>Los colores de los rayos salen de la portada del álbum.</p></article>
@@ -75,7 +81,7 @@
       <div><dt>ESPACIO</dt><dd>Pausa: el tiempo se detiene</dd></div>
       <div><dt>V</dt><dd>Cabina / cámara cinematográfica</dd></div>
       <div><dt>W A S D</dt><dd>Caminar en modo cabina · arrastra para mirar</dd></div>
-      <div><dt>B</dt><dd>Timbre de bobina: los lados suenan a guitarra eléctrica y los rayos se escuchan</dd></div>
+      <div><dt>B</dt><dd>Timbre de bobina: los lados de la mezcla se electrifican y los rayos se escuchan</dd></div>
       <div><dt>/</dt><dd>Buscar otra canción</dd></div>
       <div><dt>M</dt><dd>Sonido</dd></div>
       <div><dt>K</dt><dd>Quitar la voz (solo instrumental)</dd></div>
@@ -115,6 +121,7 @@
 
   <div class="hint mono" id="hint"></div>
   <div class="toast mono" id="toast" role="status"></div>
+  <div class="dropzone" id="dropzone" aria-hidden="true"><div><span class="up">↑</span><b>SUELTA TU AUDIO</b><span class="mono">LAS BOBINAS LO TOCARÁN COMPLETO</span></div></div>
 
   <div class="busy" id="busy" aria-hidden="true">
     <div class="busy-pct" id="busy-pct">0</div>

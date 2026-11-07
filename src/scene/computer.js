@@ -81,7 +81,7 @@ export function createComputer(mats, base) {
       for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
       const ink = 'rgba(225,240,232,0.92)', dim = 'rgba(225,240,232,0.45)';
       ctx.font = '500 26px "JetBrains Mono", monospace'; ctx.fillStyle = dim; ctx.textBaseline = 'top';
-      ctx.fillText('ARCO — TERMINAL DE BOBINAS', 56, 48);
+      ctx.fillText('MIDI — TERMINAL DE BOBINAS', 56, 48);
       ctx.textAlign = 'right'; ctx.fillText(info.bpm ? `${Math.round(info.bpm)} BPM` : 'EN ESPERA', W - 56, 48); ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(225,240,232,0.15)'; ctx.fillRect(56, 96, W - 112, 2);
       if (info.title) {
