@@ -1,6 +1,10 @@
 // Motor de audio: reproduce la vista previa como AudioBuffer (pausa exacta), timbre de bobina y zumbido.
 import { buildCoilChain } from './coilvoice.js';
 
+const FADE_IN = 0.9;      // al empezar la canción
+const RESUME_FADE = 0.25; // al reanudar o saltar
+const FADE_OUT = 1.8;     // al final de la vista previa
+
 export class AudioEngine {
   constructor() {
     this.ctx = null; this.buffer = null; this.src = null;
@@ -16,9 +20,10 @@ export class AudioEngine {
       this.songIn = ctx.createGain();
       this.dry = ctx.createGain(); this.dry.gain.value = 1;
       this.songIn.connect(this.dry).connect(this.master);
-      // timbre de bobina: voz limpia, instrumental tocado por pulsos de chispa (ver coilvoice.js)
-      this.coil = buildCoilChain(ctx, this.songIn, this.master);
-      if (this.coilMode) this.coil.set(true);
+      // timbre de bobina: dos variantes (ver coilvoice.js); solo suena la elegida
+      this.coils = { bass: buildCoilChain(ctx, this.songIn, this.master, { variant: 'bass' }), sides: buildCoilChain(ctx, this.songIn, this.master, { variant: 'sides' }) };
+      this.coil = this.coils.bass;
+      if (this.coilMode) this.setCoilMode(this.coilMode);
       // zumbido del transformador
       this.hum = ctx.createGain(); this.hum.gain.value = 0;
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
@@ -67,19 +72,36 @@ export class AudioEngine {
 
   setBuffer(b) { this.stopSource(); this.buffer = b; this.offset = 0; this.playing = false; }
 
-  play(from = this.offset) {
+  // fadeIn: segundos de entrada (más largo al empezar la canción que al reanudar)
+  play(from = this.offset, fadeIn = from < 0.05 ? FADE_IN : RESUME_FADE) {
     if (!this.buffer) return;
     this.ensure();
     this.stopSource();
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.buffer; src.connect(this.songIn);
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    const fade = ctx.createGain();
+    src.buffer = this.buffer; src.connect(fade).connect(this.songIn);
     src.onended = () => {
-      if (this.src === src && this.playing) { this.playing = false; this.offset = 0; this.src = null; this.onEnded && this.onEnded(); }
+      if (this.src === src && this.playing) { this.playing = false; this.offset = 0; this.src = null; this.fade = null; fade.disconnect(); this.onEnded && this.onEnded(); }
     };
     from = Math.max(0, Math.min(from, this.buffer.duration - 0.01));
-    this.startedAt = this.ctx.currentTime - from;
-    src.start(0, from);
-    this.src = src; this.playing = true;
+    const now = ctx.currentTime, remain = this.buffer.duration - from;
+    // envolvente: entrada suave y salida suave al final de la vista previa
+    const g = fade.gain;
+    const fi = Math.min(fadeIn, remain / 2);
+    const fo = Math.min(FADE_OUT, remain);
+    const outStart = now + remain - fo;
+    g.setValueAtTime(0, now);
+    if (outStart >= now + fi) {
+      g.linearRampToValueAtTime(1, now + fi);
+      g.setValueAtTime(1, outStart);
+    } else {
+      g.linearRampToValueAtTime(Math.max(0, (remain - fi) / FADE_OUT), now + fi);
+    }
+    g.linearRampToValueAtTime(0, now + remain);
+    this.startedAt = now - from;
+    src.start(now, from);
+    this.src = src; this.fade = fade; this.playing = true;
   }
 
   pause() {
@@ -87,11 +109,20 @@ export class AudioEngine {
     this.offset = this.time; this.playing = false; this.stopSource();
   }
 
+  // corte con un micro-fundido para que no chasquee
   stopSource() {
     if (this.src) {
-      this.src.onended = null;
-      try { this.src.stop(); } catch (e) { /* ya detenida */ }
-      this.src.disconnect(); this.src = null;
+      const src = this.src, fade = this.fade;
+      src.onended = null;
+      const now = this.ctx.currentTime;
+      if (fade) {
+        fade.gain.cancelScheduledValues(now);
+        fade.gain.setValueAtTime(fade.gain.value, now);
+        fade.gain.linearRampToValueAtTime(0, now + 0.06);
+      }
+      try { src.stop(now + 0.07); } catch (e) { /* ya detenida */ }
+      setTimeout(() => { src.disconnect(); fade && fade.disconnect(); }, 200);
+      this.src = null; this.fade = null;
     }
   }
 
@@ -108,12 +139,14 @@ export class AudioEngine {
     if (this.playing) this.play(t); else this.offset = t;
   }
 
-  setCoilMode(on) {
-    this.coilMode = on;
+  // variant: false (limpio) | 'bass' | 'sides'
+  setCoilMode(variant) {
+    this.coilMode = variant || false;
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    this.dry.gain.setTargetAtTime(on ? 0 : 1, now, 0.08);
-    this.coil.set(on, now, 0.08);
+    this.dry.gain.setTargetAtTime(variant ? 0 : 1, now, 0.08);
+    for (const k in this.coils) this.coils[k].set(k === variant, now, 0.08);
+    if (variant) this.coil = this.coils[variant];
   }
 
   setHum(v) { if (this.ctx) this.hum.gain.setTargetAtTime(v * 0.05, this.ctx.currentTime, 0.1); }

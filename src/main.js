@@ -426,9 +426,13 @@ $('#btn-play').addEventListener('click', togglePause);
 $('#btn-coil').addEventListener('click', toggleCoil);
 $('#btn-sound').addEventListener('click', toggleSound);
 function toggleCoil() {
-  S.coil = !S.coil; audio.ensure(); audio.setCoilMode(S.coil);
-  $('#btn-coil').classList.toggle('on', S.coil);
-  toast(S.coil ? 'TIMBRE DE BOBINA ACTIVADO' : 'SONIDO LIMPIO');
+  // limpio → graves eléctricos → lados eléctricos → limpio
+  const order = [false, 'bass', 'sides'];
+  S.coil = order[(order.indexOf(S.coil) + 1) % order.length];
+  audio.ensure(); audio.setCoilMode(S.coil);
+  $('#btn-coil').classList.toggle('on', !!S.coil);
+  $('#coil-label').textContent = S.coil === 'bass' ? 'GRAVES' : S.coil === 'sides' ? 'LADOS' : 'NO';
+  toast(S.coil === 'bass' ? 'BOBINA: LOS GRAVES SUENAN A ELECTRICIDAD' : S.coil === 'sides' ? 'BOBINA: LOS LADOS DE LA MEZCLA SUENAN A ELECTRICIDAD' : 'SONIDO LIMPIO');
 }
 function toggleSound() {
   S.sound = !S.sound; audio.ensure(); audio.setMuted(!S.sound);
