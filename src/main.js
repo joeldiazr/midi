@@ -4,7 +4,7 @@ import { buildLab } from './scene/lab.js';
 import { BoltSystem } from './fx/bolts.js';
 import { createPost } from './post.js';
 import { AudioEngine, HUM_IDLE } from './audio/engine.js';
-import { analyze, levelsAt, onsetsBetween, energyAt, busiestCoil, waveAt, BANDS } from './audio/analysis.js';
+import { analyze, levelsAt, onsetsBetween, energyAt, busiestCoil, waveAt, BANDS, noteAt, noteFreq } from './audio/analysis.js';
 import { searchSongs } from './audio/itunes.js';
 import { extractPalette, paletteFromHex, DEFAULT_PALETTE } from './audio/palette.js';
 import { CabinCam } from './camera/cabin.js';
@@ -79,7 +79,9 @@ async function boot() {
     const dist = tv.length() || 1;
     tv.divideScalar(dist);
     tr.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    audio.zap(ci, s, tv.dot(tr) * 0.85, Math.min(1.1, Math.max(0.45, 4 / dist)));
+    // la nota que esa bobina "escucha" en la canción en este instante
+    const pc = S.an && S.status === 'playing' ? noteAt(S.an, audio.time, ci) : -1;
+    audio.zap(ci, s, tv.dot(tr) * 0.85, Math.min(1.1, Math.max(0.45, 4 / dist)), pc >= 0 ? noteFreq(pc, ci) : null);
   };
   post = createPost(renderer, scene, camera, { lowPower });
   post.setSize(innerWidth, innerHeight, PR);
@@ -197,7 +199,7 @@ async function loadTrack(track) {
     const palP = track.art ? extractPalette(track.art).catch(() => null) : Promise.resolve(null);
     const buffer = track.buffer || (await audio.fetchBuffer(track.preview, (p) => setBusy(p * 0.5, 'DESCARGANDO VISTA PREVIA')));
     if (token !== S.token) return;
-    const an = await analyze(buffer, (p) => setBusy(0.5 + p * 0.44, 'ESCUCHANDO GRAVES, VOCES Y PULSO'));
+    const an = await analyze(buffer, (p) => setBusy(0.5 + p * 0.44, 'ESCUCHANDO PULSO Y NOTAS'));
     if (token !== S.token) return;
     setBusy(0.96, 'EXTRAYENDO COLORES DE LA PORTADA');
     const pal = (await palP) || paletteFromHex(DEFAULT_PALETTE);
@@ -465,7 +467,7 @@ function toggleCoil() {
   audio.ensure(); audio.setCoilMode(S.coil);
   $('#btn-coil').classList.toggle('on', S.coil);
   $('#coil-label').textContent = S.coil ? 'SÍ' : 'NO';
-  toast(S.coil ? 'BOBINA: LOS RAYOS SE ESCUCHAN' : 'SONIDO LIMPIO');
+  toast(S.coil ? 'BOBINA: CADA RAYO TOCA LA NOTA DE LA CANCIÓN' : 'SONIDO LIMPIO');
 }
 function toggleSound() {
   S.sound = !S.sound; audio.ensure(); audio.setMuted(!S.sound);

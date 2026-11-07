@@ -164,34 +164,51 @@ export class AudioEngine {
     this.hum.gain.setTargetAtTime(target, this.ctx.currentTime, 0.25);
   }
 
-  // chispazo de un rayo: chasquido brillante + zumbido corto de la descarga, ubicado en estéreo
-  // s: fuerza 0..1 · pan: −1 izq … 1 der · near: atenuación por distancia
-  zap(coil, s, pan = 0, near = 1) {
+  // toque de un rayo: la bobina "canta" la nota que suena en la canción en ese instante
+  // (onda cuadrada zumbante con filtro que se cierra, como una bobina musical), más una chispa mínima.
+  // s: fuerza 0..1 · pan: −1 izq … 1 der · near: atenuación por distancia · freq: Hz de la nota (o null)
+  zap(coil, s, pan = 0, near = 1, freq = null) {
     if (!this.ctx || !this.coilMode || this.muted || !this.playing) return;
     const ctx = this.ctx, now = ctx.currentTime;
-    if (now - this.lastZap[coil] < 0.04) return;
+    if (now - this.lastZap[coil] < (coil === 3 ? 0.11 : 0.07)) return;
+    if ((this.voicesOn || 0) >= 14) return; // tope de polifonía
     this.lastZap[coil] = now;
-    const amp = Math.min(1, 0.3 + s * 0.7) * near;
+    const amp = Math.min(1, 0.35 + s * 0.65) * near;
     const out = ctx.createStereoPanner(); out.pan.value = Math.max(-1, Math.min(1, pan));
     out.connect(this.sfx);
-    // chasquido
+    let ends = 0;
+    const done = () => { if (--ends <= 0) { out.disconnect(); this.voicesOn--; } };
+    this.voicesOn = (this.voicesOn || 0) + 1;
+
+    // chispa: apenas un tic de ataque
     const n = ctx.createBufferSource(); n.buffer = this.noise;
-    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1400 + Math.random() * 800;
-    const pk = ctx.createBiquadFilter(); pk.type = 'peaking'; pk.frequency.value = 3800 + Math.random() * 1200; pk.gain.value = 5; pk.Q.value = 1.1;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3000;
     const gn = ctx.createGain();
-    const dur = 0.035 + s * 0.09;
-    gn.gain.setValueAtTime(0, now); gn.gain.linearRampToValueAtTime(amp * 0.26, now + 0.003); gn.gain.exponentialRampToValueAtTime(0.0005, now + dur);
-    n.connect(hp).connect(pk).connect(gn).connect(out);
-    n.start(now, Math.random() * 0.8, dur + 0.02);
-    // zumbido de la descarga ("bzzt")
-    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 85 + coil * 22 + Math.random() * 20;
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 0.8;
-    const go = ctx.createGain();
-    const bz = 0.05 + s * 0.12;
-    go.gain.setValueAtTime(0, now); go.gain.linearRampToValueAtTime(amp * 0.1, now + 0.005); go.gain.exponentialRampToValueAtTime(0.0005, now + bz);
-    o.connect(bp).connect(go).connect(out);
-    o.start(now); o.stop(now + bz + 0.03);
-    o.onended = () => out.disconnect();
+    const tick = 0.018 + s * 0.02;
+    gn.gain.setValueAtTime(0, now); gn.gain.linearRampToValueAtTime(amp * (freq ? 0.05 : 0.12), now + 0.002); gn.gain.exponentialRampToValueAtTime(0.0005, now + tick);
+    n.connect(hp).connect(gn).connect(out);
+    n.start(now, Math.random() * 0.8, tick + 0.02);
+    ends++; n.onended = done;
+    if (!freq) return;
+
+    // la nota
+    const LVL = [0.22, 0.16, 0.11, 0.075];
+    const dur = 0.16 + s * 0.26 + (coil === 0 ? 0.12 : 0);
+    const o1 = ctx.createOscillator(); o1.type = 'square'; o1.frequency.value = freq;
+    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = freq * 1.004;
+    const mix2 = ctx.createGain(); mix2.gain.value = 0.5;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2.2;
+    lp.frequency.setValueAtTime(Math.min(9000, freq * 14), now);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(380, freq * 2.6), now + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(amp * LVL[coil], now + 0.004);
+    g.gain.exponentialRampToValueAtTime(amp * LVL[coil] * 0.45, now + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0005, now + dur);
+    o1.connect(lp); o2.connect(mix2).connect(lp); lp.connect(g).connect(out);
+    o1.start(now); o2.start(now);
+    o1.stop(now + dur + 0.03); o2.stop(now + dur + 0.03);
+    ends++; o1.onended = done;
   }
 
   setMuted(m) {

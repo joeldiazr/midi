@@ -79,7 +79,7 @@ export async function analyze(buffer, onProgress = () => {}) {
       band[f * B + b] = e / cnt; flux[f * B + b] = fl / cnt;
     }
     prev.set(mag);
-    if (f % 160 === 0) { onProgress(f / frames); await new Promise((r) => setTimeout(r, 0)); }
+    if (f % 160 === 0) { onProgress((f / frames) * 0.85); await new Promise((r) => setTimeout(r, 0)); }
   }
 
   // normalización por banda (cada bobina usa todo su rango)
@@ -190,8 +190,104 @@ export async function analyze(buffer, onProgress = () => {}) {
     const lo = percentile(energy, 0.05), hi = percentile(energy, 0.98);
     for (let f = 0; f < frames; f++) energy[f] = Math.min(1, Math.max(0, (energy[f] - lo) / Math.max(1e-6, hi - lo)));
   }
+  const notes = await analyzeNotes(mono, sr, (p) => onProgress(0.85 + p * 0.15));
   onProgress(1);
-  return { sr, hop, fps, frames, duration: buffer.duration, band: bandN, onset, energy, bpm, beats, down, counts, mono };
+  return { sr, hop, fps, frames, duration: buffer.duration, band: bandN, onset, energy, bpm, beats, down, counts, mono, notes };
+}
+
+// ---------- notas: croma (las 12 notas) por bobina ----------
+// FFT larga (8192) para tener resolución en los graves. Para cada bobina se suma la energía de su
+// rango de frecuencias en las 12 clases de nota (do, do#, re…) y se queda la más fuerte.
+// La bobina IV usa todo el espectro: así toca la nota dominante del momento.
+// el bajo se lee en 55–260 Hz: ahí están sus armónicos 2.º y 3.º, que caben bien en la resolución
+export const NOTE_RANGES = [[55, 260], [180, 800], [600, 2600], [90, 5000]];
+const NOTE_NAMES = ['DO', 'DO#', 'RE', 'RE#', 'MI', 'FA', 'FA#', 'SOL', 'SOL#', 'LA', 'LA#', 'SI'];
+export const noteName = (pc) => (pc >= 0 ? NOTE_NAMES[pc] : '—');
+
+async function analyzeNotes(mono, sr, onProgress) {
+  const N = 8192, hop = 2048, fps = sr / hop;
+  const frames = Math.max(1, Math.floor((mono.length - N) / hop) + 1);
+  const fft = makeFFT(N);
+  const win = new Float32Array(N);
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
+  const re = new Float32Array(N), im = new Float32Array(N);
+  const pcOf = new Int8Array(N / 2).fill(-1);
+  for (let k = 1; k < N / 2; k++) {
+    const f = (k * sr) / N;
+    if (f < 30 || f > 6000) continue;
+    pcOf[k] = ((Math.round(12 * Math.log2(f / 440) + 69) % 12) + 12) % 12;
+  }
+  const bins = NOTE_RANGES.map(([lo, hi]) => [Math.ceil((lo * N) / sr), Math.floor((hi * N) / sr)]);
+  const pc = new Int8Array(frames * 4).fill(-1);
+  const conf = new Float32Array(frames * 4);
+  const chroma = new Float32Array(12);
+  const mag = new Float32Array(N / 2);
+  for (let f = 0; f < frames; f++) {
+    const off = f * hop;
+    for (let i = 0; i < N; i++) { re[i] = (mono[off + i] || 0) * win[i]; im[i] = 0; }
+    fft(re, im);
+    let total = 0;
+    for (let k = 1; k < N / 2; k++) { mag[k] = Math.hypot(re[k], im[k]); total += mag[k]; }
+    if (total < 1e-3) continue;
+    for (let b = 0; b < 4; b++) {
+      chroma.fill(0);
+      let sum = 0;
+      const [lo, hi] = bins[b];
+      for (let k = lo; k <= hi; k++) {
+        if (pcOf[k] < 0) continue;
+        // solo picos locales, con su frecuencia afinada por interpolación parabólica
+        const m = mag[k];
+        if (m <= mag[k - 1] || m < mag[k + 1]) continue;
+        const a = Math.log(mag[k - 1] + 1e-9), bb = Math.log(m + 1e-9), c = Math.log(mag[k + 1] + 1e-9);
+        const den = a - 2 * bb + c;
+        const delta = Math.abs(den) > 1e-9 ? Math.max(-0.5, Math.min(0.5, (0.5 * (a - c)) / den)) : 0;
+        const fr = ((k + delta) * sr) / N;
+        const semis = 12 * Math.log2(fr / 440) + 69;
+        const near = Math.round(semis);
+        // los picos desafinados (ruido, bombo) pesan menos
+        const w = m * (1 - Math.min(1, Math.abs(semis - near) * 1.6));
+        if (w <= 0) continue;
+        const p = ((near % 12) + 12) % 12;
+        chroma[p] += w; sum += m;
+      }
+      if (sum <= 0) continue;
+      let best = 0;
+      for (let p = 1; p < 12; p++) if (chroma[p] > chroma[best]) best = p;
+      pc[f * 4 + b] = best;
+      conf[f * 4 + b] = chroma[best] / sum;
+    }
+    if (f % 60 === 0) { onProgress(f / frames); await new Promise((r) => setTimeout(r, 0)); }
+  }
+  return { fps, frames, pc, conf };
+}
+
+// nota (0–11) que toca la bobina en el instante t, o −1 si no hay una clara
+export function noteAt(an, t, coil) {
+  const nt = an && an.notes;
+  if (!nt) return -1;
+  const f0 = Math.floor(t * nt.fps);
+  const votes = new Float32Array(12);
+  for (let f = f0 - 2; f <= f0 + 2; f++) {
+    if (f < 0 || f >= nt.frames) continue;
+    const w = f === f0 ? 1 : Math.abs(f - f0) === 1 ? 0.6 : 0.3;
+    for (const b of coil === 3 ? [3] : [coil, 3]) {
+      const p = nt.pc[f * 4 + b];
+      if (p < 0) continue;
+      const c = nt.conf[f * 4 + b];
+      // la banda propia manda; el espectro completo solo ayuda cuando la propia es dudosa
+      votes[p] += w * c * (b === coil ? 1 : c < 0.2 ? 0.6 : 0.25);
+    }
+  }
+  let best = -1, bv = 0.04;
+  for (let p = 0; p < 12; p++) if (votes[p] > bv) { bv = votes[p]; best = p; }
+  return best;
+}
+
+// frecuencia en el registro de cada bobina: I grave … IV aguda
+export const COIL_OCTAVE = [2, 3, 4, 5];
+export function noteFreq(pc, coil) {
+  const midi = 12 * (COIL_OCTAVE[coil] + 1) + pc;
+  return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 export function levelsAt(an, t, out) {
