@@ -3,7 +3,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildLab } from './scene/lab.js';
 import { BoltSystem } from './fx/bolts.js';
 import { createPost } from './post.js';
-import { AudioEngine } from './audio/engine.js';
+import { AudioEngine, HUM_IDLE } from './audio/engine.js';
 import { analyze, levelsAt, onsetsBetween, energyAt, busiestCoil, waveAt, BANDS } from './audio/analysis.js';
 import { searchSongs } from './audio/itunes.js';
 import { extractPalette, paletteFromHex, DEFAULT_PALETTE } from './audio/palette.js';
@@ -72,6 +72,15 @@ async function boot() {
   setLoad(0.55);
   await wait(30);
   bolts = new BoltSystem(scene, lab);
+  // cada rayo suena donde cae: paneo según la cámara y volumen según la distancia
+  const tv = new THREE.Vector3(), tr = new THREE.Vector3();
+  bolts.onStrike = (ci, s, pos) => {
+    tv.subVectors(pos, camera.position);
+    const dist = tv.length() || 1;
+    tv.divideScalar(dist);
+    tr.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    audio.zap(ci, s, tv.dot(tr) * 0.85, Math.min(1.1, Math.max(0.45, 4 / dist)));
+  };
   post = createPost(renderer, scene, camera, { lowPower });
   post.setSize(innerWidth, innerHeight, PR);
   cabin = new CabinCam(camera, canvas, lab.colliders);
@@ -426,13 +435,11 @@ $('#btn-play').addEventListener('click', togglePause);
 $('#btn-coil').addEventListener('click', toggleCoil);
 $('#btn-sound').addEventListener('click', toggleSound);
 function toggleCoil() {
-  // limpio → graves eléctricos → lados eléctricos → limpio
-  const order = [false, 'bass', 'sides'];
-  S.coil = order[(order.indexOf(S.coil) + 1) % order.length];
+  S.coil = !S.coil;
   audio.ensure(); audio.setCoilMode(S.coil);
-  $('#btn-coil').classList.toggle('on', !!S.coil);
-  $('#coil-label').textContent = S.coil === 'bass' ? 'GRAVES' : S.coil === 'sides' ? 'LADOS' : 'NO';
-  toast(S.coil === 'bass' ? 'BOBINA: LOS GRAVES SUENAN A ELECTRICIDAD' : S.coil === 'sides' ? 'BOBINA: LOS LADOS DE LA MEZCLA SUENAN A ELECTRICIDAD' : 'SONIDO LIMPIO');
+  $('#btn-coil').classList.toggle('on', S.coil);
+  $('#coil-label').textContent = S.coil ? 'SÍ' : 'NO';
+  toast(S.coil ? 'BOBINA: LOS RAYOS SE ESCUCHAN' : 'SONIDO LIMPIO');
 }
 function toggleSound() {
   S.sound = !S.sound; audio.ensure(); audio.setMuted(!S.sound);
@@ -550,7 +557,6 @@ function frame() {
   simT += simDt;
 
   bolts.update(simDt, levels, onsets);
-  if (playing) for (let i = 0; i < 4; i++) if (onsets[i] > 0.3) audio.crackle(onsets[i]);
   kick = playing ? Math.max(kick * Math.exp(-dt * 6), onsets[0]) : kick * Math.exp(-dt * 6);
 
   // luces
@@ -566,7 +572,7 @@ function frame() {
   lab.cage.update(simDt, bolts.coilLevel[0]);
   const showWave = S.an && (playing || paused);
   lab.update(dt, simDt, simT, { levels: bolts.coilLevel, colors: pal, wave: showWave ? waveAt(S.an, S.songT, wave) : null, playing });
-  if (audio.ctx && simDt > 0) audio.setHum(0.25 + (bolts.coilLevel[0] + bolts.coilLevel[1]) * 0.25);
+  if (audio.ctx) audio.setHum(playing ? 0.2 + (bolts.coilLevel[0] + bolts.coilLevel[1]) * 0.3 : HUM_IDLE);
 
   realT += dt;
   lab.computer.update(realT, {

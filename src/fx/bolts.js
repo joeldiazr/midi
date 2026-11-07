@@ -235,6 +235,7 @@ export class BoltSystem {
       this.flashColor.copy(this.colors[ci]).lerp(this.white, 0.45);
     }
     this.shake = Math.min(1.6, this.shake + strength * (ci === 0 ? 0.55 : 0.22));
+    if (this.onStrike) this.onStrike(ci, strength, this.tmpPos.copy(c.toroid).lerp(hit, 0.5));
     return b;
   }
 
@@ -271,6 +272,7 @@ export class BoltSystem {
     b.color.copy(this.colors[ci]).lerp(this.colors[cj], 0.5);
     this.regen(b);
     this.flare(b.a, b.color, 0.8, 0.15); this.flare(b.b, b.color, 0.8, 0.15);
+    if (this.onStrike) this.onStrike(ci, strength, this.tmpPos.copy(b.a).lerp(b.b, 0.5));
   }
 
   emitSparks(p, n, count, ci, speed) {

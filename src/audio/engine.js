@@ -4,6 +4,7 @@ import { buildCoilChain } from './coilvoice.js';
 const FADE_IN = 0.9;      // al empezar la canción
 const RESUME_FADE = 0.25; // al reanudar o saltar
 const FADE_OUT = 1.8;     // al final de la vista previa
+export const HUM_IDLE = 0.12; // zumbido de fondo cuando no hay música (antes 0.25 con diente de sierra)
 
 export class AudioEngine {
   constructor() {
@@ -16,29 +17,34 @@ export class AudioEngine {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       const ctx = (this.ctx = new AC());
-      this.master = ctx.createGain(); this.master.connect(ctx.destination);
+      // limitador final: la música más los chispazos nunca recortan
+      const out = ctx.createDynamicsCompressor();
+      out.threshold.value = -2; out.knee.value = 2; out.ratio.value = 20; out.attack.value = 0.001; out.release.value = 0.1;
+      out.connect(ctx.destination);
+      this.master = ctx.createGain(); this.master.connect(out);
       this.songIn = ctx.createGain();
       this.dry = ctx.createGain(); this.dry.gain.value = 1;
       this.songIn.connect(this.dry).connect(this.master);
-      // timbre de bobina: dos variantes (ver coilvoice.js); solo suena la elegida
-      this.coils = { bass: buildCoilChain(ctx, this.songIn, this.master, { variant: 'bass' }), sides: buildCoilChain(ctx, this.songIn, this.master, { variant: 'sides' }) };
-      this.coil = this.coils.bass;
-      if (this.coilMode) this.setCoilMode(this.coilMode);
-      // zumbido del transformador
+      // timbre de bobina: centro limpio, lados eléctricos (ver coilvoice.js)
+      this.coil = buildCoilChain(ctx, this.songIn, this.master, { variant: 'sides' });
+      if (this.coilMode) this.setCoilMode(true);
+      // zumbido del transformador: senos suaves (antes era un diente de sierra que sonaba a estática)
       this.hum = ctx.createGain(); this.hum.gain.value = 0;
-      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
-      const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 60;
-      const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 120;
-      const g2 = ctx.createGain(); g2.gain.value = 0.6;
-      o1.connect(lp); o2.connect(g2).connect(lp); lp.connect(this.hum).connect(this.master);
-      o1.start(); o2.start();
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 200;
+      for (const [f, a] of [[60, 1], [120, 0.45], [180, 0.12]]) {
+        const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+        const ga = ctx.createGain(); ga.gain.value = a;
+        o.connect(ga).connect(lp); o.start();
+      }
+      lp.connect(this.hum).connect(this.master);
+      this.lastZap = [0, 0, 0, 0];
       // ruido para chasquidos
       const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
       const d = nb.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (Math.random() < 0.2 ? 1 : 0.3);
       this.noise = nb;
       this.sfx = ctx.createGain(); this.sfx.gain.value = 0.5; this.sfx.connect(this.master);
-      this.setHum(0.25);
+      this.setHum(HUM_IDLE);
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
     return this.ctx;
@@ -139,28 +145,51 @@ export class AudioEngine {
     if (this.playing) this.play(t); else this.offset = t;
   }
 
-  // variant: false (limpio) | 'bass' | 'sides'
-  setCoilMode(variant) {
-    this.coilMode = variant || false;
+  setCoilMode(on) {
+    this.coilMode = !!on;
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    this.dry.gain.setTargetAtTime(variant ? 0 : 1, now, 0.08);
-    for (const k in this.coils) this.coils[k].set(k === variant, now, 0.08);
-    if (variant) this.coil = this.coils[variant];
+    this.dry.gain.setTargetAtTime(on ? 0 : 1, now, 0.08);
+    this.coil.set(!!on, now, 0.08);
   }
 
-  setHum(v) { if (this.ctx) this.hum.gain.setTargetAtTime(v * 0.05, this.ctx.currentTime, 0.1); }
+  // 0..1; solo reprograma si cambia de verdad
+  setHum(v) {
+    if (!this.ctx) return;
+    const target = v * 0.03;
+    if (Math.abs(target - (this.humTarget ?? -1)) < 0.0004) return;
+    this.humTarget = target;
+    this.hum.gain.setTargetAtTime(target, this.ctx.currentTime, 0.25);
+  }
 
-  crackle(s) {
-    if (!this.ctx || !this.coilMode || this.muted) return;
+  // chispazo de un rayo: chasquido brillante + zumbido corto de la descarga, ubicado en estéreo
+  // s: fuerza 0..1 · pan: −1 izq … 1 der · near: atenuación por distancia
+  zap(coil, s, pan = 0, near = 1) {
+    if (!this.ctx || !this.coilMode || this.muted || !this.playing) return;
     const ctx = this.ctx, now = ctx.currentTime;
-    const src = ctx.createBufferSource(); src.buffer = this.noise;
-    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800 + Math.random() * 1500;
-    const g = ctx.createGain();
-    const dur = 0.03 + s * 0.07;
-    g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.18 * s, now + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-    src.connect(hp).connect(g).connect(this.sfx);
-    src.start(now, Math.random() * 0.8, dur + 0.02);
+    if (now - this.lastZap[coil] < 0.04) return;
+    this.lastZap[coil] = now;
+    const amp = Math.min(1, 0.3 + s * 0.7) * near;
+    const out = ctx.createStereoPanner(); out.pan.value = Math.max(-1, Math.min(1, pan));
+    out.connect(this.sfx);
+    // chasquido
+    const n = ctx.createBufferSource(); n.buffer = this.noise;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1400 + Math.random() * 800;
+    const pk = ctx.createBiquadFilter(); pk.type = 'peaking'; pk.frequency.value = 3800 + Math.random() * 1200; pk.gain.value = 5; pk.Q.value = 1.1;
+    const gn = ctx.createGain();
+    const dur = 0.035 + s * 0.09;
+    gn.gain.setValueAtTime(0, now); gn.gain.linearRampToValueAtTime(amp * 0.42, now + 0.002); gn.gain.exponentialRampToValueAtTime(0.0005, now + dur);
+    n.connect(hp).connect(pk).connect(gn).connect(out);
+    n.start(now, Math.random() * 0.8, dur + 0.02);
+    // zumbido de la descarga ("bzzt")
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 85 + coil * 22 + Math.random() * 20;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 0.8;
+    const go = ctx.createGain();
+    const bz = 0.05 + s * 0.12;
+    go.gain.setValueAtTime(0, now); go.gain.linearRampToValueAtTime(amp * 0.16, now + 0.004); go.gain.exponentialRampToValueAtTime(0.0005, now + bz);
+    o.connect(bp).connect(go).connect(out);
+    o.start(now); o.stop(now + bz + 0.03);
+    o.onended = () => out.disconnect();
   }
 
   setMuted(m) {
