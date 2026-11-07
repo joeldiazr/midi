@@ -51,7 +51,7 @@ camera.position.set(8, 2, 8);
 
 const S = {
   mode: 'cine', status: 'idle', track: null, an: null, palette: paletteFromHex(DEFAULT_PALETTE),
-  songT: 0, prevSongT: 0, sound: true, coil: false, token: 0,
+  songT: 0, prevSongT: 0, sound: true, coil: false, voices: true, token: 0,
 };
 
 let lab, bolts, post, cabin, director;
@@ -433,6 +433,21 @@ $('#logo').addEventListener('click', (e) => { e.preventDefault(); closePanels();
 $('#btn-cam').addEventListener('click', () => setMode(S.mode === 'cine' ? 'cabin' : 'cine'));
 $('#btn-play').addEventListener('click', togglePause);
 $('#btn-coil').addEventListener('click', toggleCoil);
+$('#btn-voice').addEventListener('click', toggleVoice);
+$('#btn-ui').addEventListener('click', toggleUI);
+function toggleVoice() {
+  S.voices = !S.voices;
+  audio.ensure(); audio.setVoices(S.voices);
+  $('#btn-voice').classList.toggle('on', !S.voices);
+  $('#voice-label').textContent = S.voices ? 'SÍ' : 'NO';
+  toast(S.voices ? 'CON VOZ' : 'SOLO INSTRUMENTAL · SE QUITA LO QUE VA AL CENTRO');
+}
+function toggleUI() {
+  const hidden = body.classList.toggle('ui-hidden');
+  $('#btn-ui').setAttribute('aria-pressed', String(hidden));
+  $('#btn-ui').title = hidden ? 'Mostrar interfaz (H)' : 'Ocultar interfaz (H)';
+  if (hidden) toast('INTERFAZ OCULTA · H PARA MOSTRARLA');
+}
 $('#btn-sound').addEventListener('click', toggleSound);
 function toggleCoil() {
   S.coil = !S.coil;
@@ -477,6 +492,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); if (anyPanel()) return; togglePause(); }
   else if (e.code === 'KeyV') setMode(S.mode === 'cine' ? 'cabin' : 'cine');
   else if (e.code === 'KeyB') toggleCoil();
+  else if (e.code === 'KeyK') toggleVoice();
+  else if (e.code === 'KeyH') toggleUI();
   else if (e.code === 'KeyM') toggleSound();
   else if (e.code === 'KeyR' && S.mode === 'cabin') cabin.reset(lab.coils[0]);
   else if (e.key === '/') { e.preventDefault(); openPanel('search'); }

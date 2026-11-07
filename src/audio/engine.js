@@ -1,5 +1,5 @@
 // Motor de audio: reproduce la vista previa como AudioBuffer (pausa exacta), timbre de bobina y zumbido.
-import { buildCoilChain } from './coilvoice.js';
+import { buildMixChain, softClipper } from './mixer.js';
 
 const FADE_IN = 0.9;      // al empezar la canción
 const RESUME_FADE = 0.25; // al reanudar o saltar
@@ -10,24 +10,22 @@ export class AudioEngine {
   constructor() {
     this.ctx = null; this.buffer = null; this.src = null;
     this.offset = 0; this.startedAt = 0; this.playing = false;
-    this.muted = false; this.coilMode = false; this.onEnded = null;
+    this.muted = false; this.coilMode = false; this.voices = true; this.onEnded = null;
   }
 
   ensure() {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       const ctx = (this.ctx = new AC());
-      // limitador final: la música más los chispazos nunca recortan
-      const out = ctx.createDynamicsCompressor();
-      out.threshold.value = -2; out.knee.value = 2; out.ratio.value = 20; out.attack.value = 0.001; out.release.value = 0.1;
-      out.connect(ctx.destination);
-      this.master = ctx.createGain(); this.master.connect(out);
+      // techo final: recortador suave (un compresor subiría el volumen por su cuenta y saturaría)
+      const clip = softClipper(ctx);
+      clip.output.connect(ctx.destination);
+      this.master = ctx.createGain(); this.master.connect(clip.input);
       this.songIn = ctx.createGain();
-      this.dry = ctx.createGain(); this.dry.gain.value = 1;
-      this.songIn.connect(this.dry).connect(this.master);
-      // timbre de bobina: centro limpio, lados eléctricos (ver coilvoice.js)
-      this.coil = buildCoilChain(ctx, this.songIn, this.master, { variant: 'sides' });
-      if (this.coilMode) this.setCoilMode(true);
+      // mezcla centro/lados: quitar voz y timbre de bobina (ver mixer.js)
+      this.mix = buildMixChain(ctx, this.songIn, this.master);
+      this.mix.setCoil(this.coilMode, ctx.currentTime, 0.001);
+      this.mix.setVoices(this.voices, ctx.currentTime, 0.001);
       // zumbido del transformador: senos suaves (antes era un diente de sierra que sonaba a estática)
       this.hum = ctx.createGain(); this.hum.gain.value = 0;
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 200;
@@ -149,8 +147,12 @@ export class AudioEngine {
     this.coilMode = !!on;
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    this.dry.gain.setTargetAtTime(on ? 0 : 1, now, 0.08);
-    this.coil.set(!!on, now, 0.08);
+    this.mix.setCoil(!!on, now, 0.08);
+  }
+
+  setVoices(on) {
+    this.voices = !!on;
+    if (this.ctx) this.mix.setVoices(this.voices, this.ctx.currentTime, 0.08);
   }
 
   // 0..1; solo reprograma si cambia de verdad
@@ -178,7 +180,7 @@ export class AudioEngine {
     const pk = ctx.createBiquadFilter(); pk.type = 'peaking'; pk.frequency.value = 3800 + Math.random() * 1200; pk.gain.value = 5; pk.Q.value = 1.1;
     const gn = ctx.createGain();
     const dur = 0.035 + s * 0.09;
-    gn.gain.setValueAtTime(0, now); gn.gain.linearRampToValueAtTime(amp * 0.42, now + 0.002); gn.gain.exponentialRampToValueAtTime(0.0005, now + dur);
+    gn.gain.setValueAtTime(0, now); gn.gain.linearRampToValueAtTime(amp * 0.26, now + 0.003); gn.gain.exponentialRampToValueAtTime(0.0005, now + dur);
     n.connect(hp).connect(pk).connect(gn).connect(out);
     n.start(now, Math.random() * 0.8, dur + 0.02);
     // zumbido de la descarga ("bzzt")
@@ -186,7 +188,7 @@ export class AudioEngine {
     const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 0.8;
     const go = ctx.createGain();
     const bz = 0.05 + s * 0.12;
-    go.gain.setValueAtTime(0, now); go.gain.linearRampToValueAtTime(amp * 0.16, now + 0.004); go.gain.exponentialRampToValueAtTime(0.0005, now + bz);
+    go.gain.setValueAtTime(0, now); go.gain.linearRampToValueAtTime(amp * 0.1, now + 0.005); go.gain.exponentialRampToValueAtTime(0.0005, now + bz);
     o.connect(bp).connect(go).connect(out);
     o.start(now); o.stop(now + bz + 0.03);
     o.onended = () => out.disconnect();

@@ -20,6 +20,7 @@
     <a class="logo" href="#" id="logo">ARCO</a>
     <div class="shot mono" id="shot" aria-live="polite"><span id="shot-name"></span><span id="shot-meta"></span></div>
     <nav class="nav">
+      <button class="round ghost" id="btn-ui" aria-label="Ocultar o mostrar la interfaz" aria-pressed="false" title="Ocultar interfaz (H)"><svg class="eye" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path class="lid" d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle class="pupil" cx="12" cy="12" r="2.8" fill="currentColor"/><path class="slash" d="M4 4l16 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <button class="round" id="btn-sound" aria-label="Activar o silenciar el sonido" title="Sonido (M)"><span class="bars"><i></i><i></i><i></i><i></i></span></button>
       <button class="pill dark" id="btn-cam" title="Cambiar cámara (V)"><span class="lbl">CÁMARA</span> <b id="cam-label">CINE</b><i class="dot"></i></button>
       <button class="pill dark hide-s" id="btn-how">CÓMO FUNCIONA<i class="dot"></i></button>
@@ -38,6 +39,7 @@
       </h1>
       <div class="hero-right">
         <p class="lede mono">Un sótano en Nueva York, un millón de voltios y treinta segundos de música. Busca una canción: las bobinas la tocan disparando arcos contra la cabina.</p>
+        <p class="tribute mono"><b>INSPIRADO EN <em>EL APRENDIZ DE BRUJO</em> (2010)</b>Una de mis películas favoritas. Esto nace de la escena en que Dave lleva a Becky a su laboratorio y las bobinas de Tesla tocan la canción que ella había puesto en su programa de radio.</p>
         <button class="pill light big" id="cta">ELEGIR UNA CANCIÓN<i class="dots"><b></b><b></b></i></button>
         <h2 class="it"><span class="line"><span>ELECTRICIDAD</span></span><span class="line"><span>QUE SE ESCUCHA</span></span></h2>
       </div>
@@ -73,9 +75,11 @@
       <div><dt>ESPACIO</dt><dd>Pausa: el tiempo se detiene</dd></div>
       <div><dt>V</dt><dd>Cabina / cámara cinematográfica</dd></div>
       <div><dt>W A S D</dt><dd>Caminar en modo cabina · arrastra para mirar</dd></div>
-      <div><dt>B</dt><dd>Timbre de bobina: los lados de la mezcla y los rayos suenan a electricidad</dd></div>
+      <div><dt>B</dt><dd>Timbre de bobina: los lados suenan a guitarra eléctrica y los rayos se escuchan</dd></div>
       <div><dt>/</dt><dd>Buscar otra canción</dd></div>
       <div><dt>M</dt><dd>Sonido</dd></div>
+      <div><dt>K</dt><dd>Quitar la voz (solo instrumental)</dd></div>
+      <div><dt>H</dt><dd>Ocultar o mostrar la interfaz</dd></div>
     </dl>
   </section>
 
@@ -97,6 +101,7 @@
       </div>
       <div class="tools">
         <div class="swatches" id="swatches" title="Colores extraídos de la portada"></div>
+        <button class="pill dark" id="btn-voice" title="Quitar la voz (K)">VOZ <b id="voice-label">SÍ</b><i class="dot"></i></button>
         <button class="pill dark" id="btn-coil" title="Timbre de bobina (B)">BOBINA <b id="coil-label">NO</b><i class="dot"></i></button>
         <a class="pill dark link" id="t-link" target="_blank" rel="noopener">APPLE MUSIC ↗</a>
       </div>

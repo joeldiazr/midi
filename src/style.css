@@ -317,3 +317,27 @@ body.screen-arrived #search.on-screen.open { opacity: 1; }
 #search.on-screen .results li:hover, #search.on-screen .results li:focus-visible { background: #d9f5e7; color: #06100c; }
 #search.on-screen .round.close { width: 38px; height: 38px; font-size: 13px; }
 #search.on-screen .ov-foot { font-size: 13px; }
+/* ---------- ocultar interfaz ---------- */
+.round.ghost { background: var(--pill-dark); color: var(--ink); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.round.ghost:hover { background: rgba(52, 54, 64, 0.9); }
+.eye .slash { opacity: 0; transition: opacity 0.3s; }
+body.ui-hidden .eye .slash { opacity: 1; }
+body.ui-hidden .eye .pupil { opacity: 0.35; }
+body.ui-hidden .hud, body.ui-hidden .meters, body.ui-hidden .shot, body.ui-hidden .hint, body.ui-hidden .hero,
+body.ui-hidden .freeze, body.ui-hidden .viewfinder, body.ui-hidden .logo, body.ui-hidden .nav > :not(#btn-ui) {
+  opacity: 0 !important; pointer-events: none !important; transition: opacity 0.5s var(--ease);
+}
+body.ui-hidden #btn-ui { opacity: 0.4; transition: opacity 0.4s; }
+body.ui-hidden #btn-ui:hover, body.ui-hidden #btn-ui:focus-visible { opacity: 1; }
+
+/* ---------- dedicatoria ---------- */
+.tribute {
+  max-width: 380px; line-height: 1.65; color: var(--ink-2); text-transform: none; letter-spacing: 0.02em; font-size: 11px;
+  border-top: 1px solid var(--line); padding-top: 12px; opacity: 0; transition: opacity 0.8s 0.75s;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8);
+}
+.tribute b { display: block; color: var(--ink); font-weight: 500; letter-spacing: 0.08em; margin-bottom: 4px; }
+.tribute em { font-style: italic; color: var(--accent); }
+body.ready .tribute { opacity: 1; }
+@media (max-width: 900px) { .tribute { max-width: 520px; } }
+@media (max-width: 560px) { .tribute { font-size: 10.5px; } .lede { display: none; } }
