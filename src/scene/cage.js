@@ -1,6 +1,7 @@
 // Cabina de malla metálica en el centro del círculo. Los rayos golpean aquí.
 import * as THREE from 'three';
 import { chainLink } from './textures.js';
+import { createComputer } from './computer.js';
 
 const V3 = THREE.Vector3;
 export const CAGE_HW = 0.9;
@@ -104,18 +105,21 @@ export function createCage(mats) {
 
   // consola interior: el interruptor que lo enciende todo
   const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.0, 12), frameMat);
-  post.position.set(0.55, base + 0.5, -0.55); g.add(post);
+  post.position.set(0.66, base + 0.5, -0.2); g.add(post);
   const ctrl = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.24), mats.panel);
-  ctrl.position.set(0.55, base + 1.08, -0.55); ctrl.rotation.y = Math.PI / 4; ctrl.rotation.x = -0.35; ctrl.castShadow = true; g.add(ctrl);
+  ctrl.position.set(0.66, base + 1.08, -0.2); ctrl.rotation.y = Math.PI / 4; ctrl.rotation.x = -0.35; ctrl.castShadow = true; g.add(ctrl);
   const lever = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 8), mats.aluminium);
-  lever.position.set(0.55, base + 1.22, -0.55); lever.rotation.z = 0.5; g.add(lever);
+  lever.position.set(0.66, base + 1.22, -0.2); lever.rotation.z = 0.5; g.add(lever);
   const ledMat = new THREE.MeshBasicMaterial({ color: 0xff3b2e });
   const led = new THREE.Mesh(new THREE.SphereGeometry(0.016, 10, 8), ledMat);
-  led.position.set(0.47, base + 1.19, -0.47); g.add(led);
+  led.position.set(0.58, base + 1.19, -0.12); g.add(led);
+
+  const computer = createComputer(mats, base);
+  g.add(computer.group);
 
   const tmp = new V3();
   return {
-    group: g, material: meshMat, hits, hitCols,
+    group: g, material: meshMat, hits, hitCols, computer,
     // punto de impacto en la cabina, sesgado a lo que está más cerca de la bobina
     randomTarget(from, R, outPos, outNormal) {
       const sx = Math.sign(from.x) || 1, sz = Math.sign(from.z) || 1;

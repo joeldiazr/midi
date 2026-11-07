@@ -1,4 +1,6 @@
 // Motor de audio: reproduce la vista previa como AudioBuffer (pausa exacta), timbre de bobina y zumbido.
+import { buildCoilChain } from './coilvoice.js';
+
 export class AudioEngine {
   constructor() {
     this.ctx = null; this.buffer = null; this.src = null;
@@ -14,14 +16,9 @@ export class AudioEngine {
       this.songIn = ctx.createGain();
       this.dry = ctx.createGain(); this.dry.gain.value = 1;
       this.songIn.connect(this.dry).connect(this.master);
-      // timbre de bobina: saturación dura + banda media, como una bobina musical real
-      this.shaper = ctx.createWaveShaper();
-      const n = 2048, curve = new Float32Array(n);
-      for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.sign(x) * Math.pow(Math.abs(x), 0.25); }
-      this.shaper.curve = curve; this.shaper.oversample = '2x';
-      this.bp = ctx.createBiquadFilter(); this.bp.type = 'bandpass'; this.bp.frequency.value = 1400; this.bp.Q.value = 0.6;
-      this.wet = ctx.createGain(); this.wet.gain.value = 0;
-      this.songIn.connect(this.shaper); this.shaper.connect(this.bp).connect(this.wet).connect(this.master);
+      // timbre de bobina: voz limpia, instrumental tocado por pulsos de chispa (ver coilvoice.js)
+      this.coil = buildCoilChain(ctx, this.songIn, this.master);
+      if (this.coilMode) this.coil.set(true);
       // zumbido del transformador
       this.hum = ctx.createGain(); this.hum.gain.value = 0;
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
@@ -115,8 +112,8 @@ export class AudioEngine {
     this.coilMode = on;
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    this.dry.gain.setTargetAtTime(on ? 0.72 : 1, now, 0.08);
-    this.wet.gain.setTargetAtTime(on ? 0.5 : 0, now, 0.08);
+    this.dry.gain.setTargetAtTime(on ? 0 : 1, now, 0.08);
+    this.coil.set(on, now, 0.08);
   }
 
   setHum(v) { if (this.ctx) this.hum.gain.setTargetAtTime(v * 0.05, this.ctx.currentTime, 0.1); }

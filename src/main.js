@@ -10,6 +10,7 @@ import { extractPalette, paletteFromHex, DEFAULT_PALETTE } from './audio/palette
 import { CabinCam } from './camera/cabin.js';
 import { Director } from './camera/cinematic.js';
 import { rng } from './scene/textures.js';
+import { SCREEN_W, SCREEN_H } from './scene/computer.js';
 
 const $ = (s) => document.querySelector(s);
 const body = document.body;
@@ -83,7 +84,7 @@ async function boot() {
   renderer.shadowMap.needsUpdate = true;
   setMode('cine');
   frame();
-  if (import.meta.env.DEV) window.__arco = { S, director, camera, lab, bolts, audio, renderer, post, setMode, loadTrack, togglePause };
+  if (import.meta.env.DEV) window.__arco = { S, SV, cabin, director, camera, lab, bolts, audio, renderer, post, setMode, loadTrack, togglePause, openSearch, closeSearch };
   setLoad(1);
   await wait(900);
   body.classList.remove('is-loading');
@@ -237,14 +238,107 @@ function fillHud(track, an, pal) {
 
 // ---------- paneles ----------
 function openPanel(id) {
+  if (id === 'search') { openSearch(); return; }
   closePanels();
   const el = $('#' + id);
   el.classList.add('open'); el.setAttribute('aria-hidden', 'false');
-  if (id === 'search') setTimeout(() => $('#q').focus(), 60);
 }
 function closePanels() {
+  closeSearch();
   document.querySelectorAll('.overlay.open').forEach((el) => { el.classList.remove('open'); el.setAttribute('aria-hidden', 'true'); });
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+
+// ---------- terminal: la búsqueda vive en la pantalla de la computadora de la cabina ----------
+const UP = new THREE.Vector3(0, 1, 0);
+const SV = {
+  active: false, arrived: false, t: 0, leaving: 1, onScreen: false,
+  fromPos: new THREE.Vector3(), fromQ: new THREE.Quaternion(), fromFov: 50,
+  toPos: new THREE.Vector3(), toQ: new THREE.Quaternion(), toFov: 36,
+};
+const probeCam = new THREE.PerspectiveCamera(36, 1, 0.05, 90);
+const easeIO = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+
+function screenPose() {
+  const c = new THREE.Vector3(), n = new THREE.Vector3();
+  lab.computer.screenFrame(c, n);
+  const vfov = 36, tn = Math.tan(THREE.MathUtils.degToRad(vfov / 2)), asp = innerWidth / innerHeight;
+  const fill = 0.76;
+  const d = Math.min(1.34, Math.max((SCREEN_H / 2) / tn / fill, (SCREEN_W / 2) / (tn * asp) / fill));
+  SV.toPos.copy(c).addScaledVector(n, d);
+  const m = new THREE.Matrix4().lookAt(SV.toPos, c, UP);
+  SV.toQ.setFromRotationMatrix(m);
+  SV.toFov = vfov;
+}
+
+// coloca el panel HTML exactamente sobre la pantalla 3D (o a pantalla completa si queda muy chico)
+function layoutScreen() {
+  const el = $('#search');
+  probeCam.position.copy(SV.toPos); probeCam.quaternion.copy(SV.toQ);
+  probeCam.fov = SV.toFov; probeCam.aspect = innerWidth / innerHeight; probeCam.updateProjectionMatrix(); probeCam.updateMatrixWorld();
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of lab.computer.corners()) {
+    p.project(probeCam);
+    const x = (p.x * 0.5 + 0.5) * innerWidth, y = (-p.y * 0.5 + 0.5) * innerHeight;
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  const w = x1 - x0, h = y1 - y0;
+  SV.onScreen = w >= 560 && h >= 340;
+  el.classList.toggle('on-screen', SV.onScreen);
+  el.style.transform = SV.onScreen ? `translate(${x0}px, ${y0}px) scale(${w / 1000}, ${h / 625})` : '';
+}
+
+function openSearch() {
+  if (SV.active) { $('#q').focus(); return; }
+  closePanels();
+  SV.active = true; SV.arrived = false; SV.t = 0;
+  SV.fromPos.copy(camera.position); SV.fromQ.copy(camera.quaternion); SV.fromFov = camera.fov;
+  screenPose(); layoutScreen();
+  cabin.active = false;
+  body.classList.add('screen-view');
+  const el = $('#search');
+  el.classList.add('open'); el.setAttribute('aria-hidden', 'false');
+  if (!SV.onScreen) setTimeout(() => $('#q').focus(), 60);
+}
+
+function closeSearch() {
+  if (!SV.active) return;
+  SV.active = false; SV.arrived = false; SV.leaving = 0;
+  SV.fromPos.copy(camera.position); SV.fromQ.copy(camera.quaternion); SV.fromFov = camera.fov;
+  body.classList.remove('screen-view', 'screen-arrived');
+  const el = $('#search');
+  el.classList.remove('open'); el.setAttribute('aria-hidden', 'true');
+  if (S.mode === 'cabin') cabin.active = true;
+  else { director.frozen = null; director.cut(dirCtx()); }
+}
+
+function setFov(f) { if (Math.abs(camera.fov - f) > 0.01) { camera.fov = f; camera.updateProjectionMatrix(); } }
+
+function updateScreenCamera(dt) {
+  if (SV.active) {
+    SV.t += dt;
+    const e = easeIO(Math.min(1, SV.t / 1.4));
+    camera.position.lerpVectors(SV.fromPos, SV.toPos, e);
+    camera.quaternion.slerpQuaternions(SV.fromQ, SV.toQ, e);
+    camera.up.set(0, 1, 0);
+    setFov(SV.fromFov + (SV.toFov - SV.fromFov) * e);
+    if (e >= 1 && !SV.arrived) {
+      SV.arrived = true;
+      body.classList.add('screen-arrived');
+      $('#q').focus({ preventScroll: true });
+    }
+    return true;
+  }
+  return false;
+}
+// mezcla suave desde la pantalla hacia la cámara activa al cerrar
+function blendFromScreen(dt) {
+  if (SV.leaving >= 1) return;
+  SV.leaving = Math.min(1, SV.leaving + dt / 1.2);
+  const e = easeIO(SV.leaving);
+  camera.position.lerpVectors(SV.fromPos, camera.position, e);
+  camera.quaternion.slerpQuaternions(SV.fromQ, camera.quaternion.clone(), e);
+  setFov(SV.fromFov + (camera.fov - SV.fromFov) * e);
 }
 const anyPanel = () => !!document.querySelector('.overlay.open');
 
@@ -382,6 +476,7 @@ function resize() {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   post && post.setSize(innerWidth, innerHeight, PR);
+  if (SV.active && lab) { screenPose(); layoutScreen(); if (SV.arrived) SV.t = 99; }
 }
 window.addEventListener('resize', resize);
 
@@ -410,7 +505,7 @@ const idleTimers = [1.2, 2.4, 3.3, 4.1];
 const wave = new Float32Array(192);
 const R = rng(31);
 let lastNow = performance.now();
-let simT = 0, freezeAmt = 0, hudT = 0, kick = 0;
+let simT = 0, freezeAmt = 0, hudT = 0, kick = 0, realT = 0;
 let meterEls = null;
 
 function dirCtx() {
@@ -469,9 +564,19 @@ function frame() {
   lab.update(dt, simDt, simT, { levels: bolts.coilLevel, colors: pal, wave: showWave ? waveAt(S.an, S.songT, wave) : null, playing });
   if (audio.ctx && simDt > 0) audio.setHum(0.25 + (bolts.coilLevel[0] + bolts.coilLevel[1]) * 0.25);
 
+  realT += dt;
+  lab.computer.update(realT, {
+    title: S.track && S.status !== 'loading' ? S.track.title : '', artist: S.track ? S.track.artist : '',
+    bpm: S.an ? S.an.bpm : 0, status: S.status, levels: bolts.coilLevel, colors: pal,
+    progress: S.an ? S.songT / S.an.duration : 0,
+  });
+
   // cámara
-  if (S.mode === 'cabin') cabin.update(dt, paused ? 0 : bolts.shake, kick);
-  else director.update(dt, dirCtx());
+  if (!updateScreenCamera(dt)) {
+    if (S.mode === 'cabin') cabin.update(dt, paused ? 0 : bolts.shake, kick);
+    else director.update(dt, dirCtx());
+    blendFromScreen(dt);
+  }
   bolts.setPixel(camera, innerHeight * PR);
 
   // posproceso

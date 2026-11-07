@@ -70,7 +70,9 @@ export function buildLab(scene, { lowPower = false } = {}) {
   };
   mats.windings.map.repeat.set(1, 5);
 
-  const add = (mesh, { cast = true, recv = true } = {}) => { mesh.castShadow = cast; mesh.receiveShadow = recv; root.add(mesh); return mesh; };
+  // todo lo que puede tapar a la cámara cinematográfica (arquitectura y utilería, no bobinas ni cabina)
+  const occluders = [];
+  const add = (mesh, { cast = true, recv = true } = {}) => { mesh.castShadow = cast; mesh.receiveShadow = recv; root.add(mesh); occluders.push(mesh); return mesh; };
 
   // ---------- piso ----------
   const floor = add(new THREE.Mesh(scaleUV(new THREE.PlaneGeometry(HALL * 2, HALL * 2), (HALL * 2) / 4), mFloor), { cast: false });
@@ -159,7 +161,7 @@ export function buildLab(scene, { lowPower = false } = {}) {
 
   // ---------- consola del operador ----------
   const scope = makeScope();
-  const desk0 = new THREE.Group(); desk0.position.set(0, 0, 9.6); root.add(desk0);
+  const desk0 = new THREE.Group(); desk0.position.set(0, 0, 9.6); root.add(desk0); occluders.push(desk0);
   const desk = new THREE.Mesh(boxGeo(3.2, 0.9, 1.0, 2), mats.panel); desk.position.y = 0.45; desk.castShadow = desk.receiveShadow = true; desk0.add(desk);
   const slope = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.06, 0.7), mats.darkMetal); slope.position.set(0, 0.98, -0.12); slope.rotation.x = 0.35; desk0.add(slope);
   const scr = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.62, 0.55), mats.panel); scr.position.set(-0.7, 1.3, 0.12); scr.castShadow = true; desk0.add(scr);
@@ -191,7 +193,7 @@ export function buildLab(scene, { lowPower = false } = {}) {
 
   // ---------- bancos de trabajo, pizarra, estantes ----------
   const bench = (x, z, ry, len) => {
-    const gr = new THREE.Group(); gr.position.set(x, 0, z); gr.rotation.y = ry; root.add(gr);
+    const gr = new THREE.Group(); gr.position.set(x, 0, z); gr.rotation.y = ry; root.add(gr); occluders.push(gr);
     const top = new THREE.Mesh(boxGeo(len, 0.08, 1.0, 2), mats.wood); top.position.y = 0.95; gr.add(top);
     for (const lx of [-len / 2 + 0.1, len / 2 - 0.1]) for (const lz of [-0.4, 0.4]) {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.95, 0.07), mats.steel); leg.position.set(lx, 0.475, lz); gr.add(leg);
@@ -225,7 +227,7 @@ export function buildLab(scene, { lowPower = false } = {}) {
   const frame = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.35, 5.4), mats.wood); frame.position.set(-HALL + 0.12, 2.75, 0); root.add(frame);
 
   // estantería con frascos
-  const shelfG = new THREE.Group(); shelfG.position.set(-10.5, 0, HALL - 0.45); root.add(shelfG);
+  const shelfG = new THREE.Group(); shelfG.position.set(-10.5, 0, HALL - 0.45); root.add(shelfG); occluders.push(shelfG);
   for (let s = 0; s < 4; s++) {
     const pl = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.04, 0.5), mats.wood); pl.position.y = 0.4 + s * 0.65; shelfG.add(pl);
     for (let i = 0; i < 9; i++) {
@@ -248,7 +250,7 @@ export function buildLab(scene, { lowPower = false } = {}) {
   }
 
   // escalera metálica hacia la puerta del muro norte
-  const stairs = new THREE.Group(); stairs.position.set(3, 0, -HALL + 0.75); root.add(stairs);
+  const stairs = new THREE.Group(); stairs.position.set(3, 0, -HALL + 0.75); root.add(stairs); occluders.push(stairs);
   for (let i = 0; i < 18; i++) {
     const st = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.04, 1.2), mats.steel);
     st.position.set(-i * 0.3, 0.25 + i * 0.25, 0); stairs.add(st);
@@ -326,11 +328,12 @@ export function buildLab(scene, { lowPower = false } = {}) {
   box(-HALL + 0.6, 0, 1.0, 6); box(HALL - 0.6, -2, 1.0, 5); box(10.5, HALL - 0.6, 4, 1.0); box(-10.5, -HALL + 0.6, 4, 1.0);
   const hw = CAGE_HW;
   segs.push([-hw, -hw, hw, -hw], [hw, -hw, hw, hw], [-hw, -hw, -hw, hw], [-hw, hw, -0.45, hw], [0.45, hw, hw, hw]);
+  box(0, -0.6, 0.9, 0.6); // mesa de la computadora
   const circles = coils.map((c) => [c.base.x, c.base.z, 0.95]);
 
   const tmpC = new THREE.Color();
   return {
-    root, coils, cage, coilLights, flash, lanterns, mats,
+    root, coils, cage, coilLights, flash, lanterns, mats, occluders, computer: cage.computer,
     colliders: { segs, circles },
     setPalette(colors) {
       coils.forEach((c, i) => { c.setPalette(colors[i]); coilLights[i].color.copy(colors[i]); });

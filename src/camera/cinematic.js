@@ -118,7 +118,7 @@ const SHOTS = [
     id: 'picado', name: 'PICADO', mood: 1, subject: true,
     init(R, c) {
       const side = new V3(-c.dir.z, 0, c.dir.x).multiplyScalar(R() < 0.5 ? -1 : 1);
-      const p = c.toroid.clone().addScaledVector(c.dir, 1.6).addScaledVector(side, 1.4); p.y = 6.6;
+      const p = c.toroid.clone().addScaledVector(c.dir, 1.2).addScaledVector(side, 1.2); p.y = 5.5;
       return { p, c };
     },
     pose(s, t, o) { o.pos.copy(s.p); o.pos.y -= t * 0.1; o.target.copy(s.c.toroid).lerp(CENTER, 0.45); o.fov = 50; o.roll = 0; },
@@ -136,6 +136,36 @@ export class Director {
     this.frozen = null;
     this.kick = 0; this.time = 0;
     this.subject = 0;
+    // geometría que no debe interponerse entre la cámara y lo que mira
+    this.ray = new THREE.Raycaster();
+    this.occ = [...(lab.occluders || []), ...(lab.computer ? [lab.computer.group] : [])];
+    this.tmpDir = new V3(); this.tmpPos = new V3();
+    this.probe = { pos: new V3(), target: new V3(), up: new V3(0, 1, 0), fov: 50, roll: 0 };
+  }
+
+  // distancia al primer obstáculo entre target y pos (Infinity si está despejado)
+  obstacle(target, pos) {
+    const d = this.tmpDir.subVectors(pos, target);
+    const dist = d.length();
+    if (dist < 1e-4) return Infinity;
+    d.divideScalar(dist);
+    this.ray.set(target, d);
+    this.ray.near = 0; this.ray.far = dist;
+    const hit = this.ray.intersectObjects(this.occ, true)[0];
+    return hit ? hit.distance : Infinity;
+  }
+
+  // un plano sirve si en todo su recorrido la cámara queda en el aire y con vista limpia
+  valid(shot, state) {
+    const p = this.probe;
+    for (const t of [0, 1.5, 3, 5, 8]) {
+      p.up.set(0, 1, 0);
+      shot.pose(state, t, p);
+      if (p.pos.y < 0.1 || p.pos.y > 8.3) return false;
+      if (Math.abs(p.pos.x) > 14.4 || Math.abs(p.pos.z) > 14.4) return false;
+      if (this.obstacle(p.target, p.pos) < Infinity) return false;
+    }
+    return true;
   }
 
   choose(energy) {
@@ -150,10 +180,16 @@ export class Director {
   }
 
   cut(ctx) {
-    const shot = this.choose(ctx.energy ?? 0.4);
-    this.subject = ctx.subject ?? Math.floor(this.R() * 4);
+    let shot, state;
+    for (let tries = 0; tries < 14; tries++) {
+      shot = this.choose(ctx.energy ?? 0.4);
+      this.subject = tries === 0 && ctx.subject != null ? ctx.subject : Math.floor(this.R() * 4);
+      state = shot.init(this.R, this.lab.coils[this.subject]);
+      if (this.valid(shot, state)) break;
+      if (tries === 13) { shot = SHOTS[0]; state = shot.init(this.R, this.lab.coils[this.subject]); }
+    }
     this.shot = shot;
-    this.state = shot.init(this.R, this.lab.coils[this.subject]);
+    this.state = state;
     this.age = 0; this.count++;
     this.history.push(shot.id); if (this.history.length > 4) this.history.shift();
     this.idleLen = 7 + this.R() * 4;
@@ -217,7 +253,15 @@ export class Director {
   apply(shake, kick) {
     const o = this.o, cam = this.cam, n = this.time;
     const sh = shake * 0.045;
-    cam.position.set(o.pos.x + Math.sin(n * 43) * sh, o.pos.y + Math.sin(n * 37 + 1) * sh, o.pos.z + Math.sin(n * 31 + 2) * sh);
+    const p = this.tmpPos.set(o.pos.x + Math.sin(n * 43) * sh, o.pos.y + Math.sin(n * 37 + 1) * sh, o.pos.z + Math.sin(n * 31 + 2) * sh);
+    p.y = Math.max(0.1, p.y);
+    // red de seguridad: si algo se interpone (p. ej. al orbitar en pausa), la cámara se acerca al sujeto
+    const hit = this.obstacle(o.target, p);
+    if (hit < Infinity) {
+      const d = this.tmpDir.subVectors(p, o.target).normalize();
+      p.copy(o.target).addScaledVector(d, Math.max(0.3, hit - 0.3));
+    }
+    cam.position.copy(p);
     cam.up.copy(o.up);
     cam.lookAt(o.target);
     if (o.roll || sh) cam.rotateZ(o.roll + Math.sin(n * 27) * sh * 0.25);
