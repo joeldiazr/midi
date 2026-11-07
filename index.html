@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ARCO — Música hecha de rayos</title>
+  <meta name="description" content="Cuatro bobinas de Tesla en un sótano tocan la canción que busques, disparando rayos contra una cabina de malla." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body class="is-loading">
+  <canvas id="scene" aria-label="Sótano con cuatro bobinas de Tesla"></canvas>
+
+  <div class="letterbox" aria-hidden="true"><i></i><i></i></div>
+  <div class="viewfinder" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+  <header class="top">
+    <a class="logo" href="#" id="logo">ARCO</a>
+    <div class="shot mono" id="shot" aria-live="polite"><span id="shot-name"></span><span id="shot-meta"></span></div>
+    <nav class="nav">
+      <button class="round" id="btn-sound" aria-label="Activar o silenciar el sonido" title="Sonido (M)"><span class="bars"><i></i><i></i><i></i><i></i></span></button>
+      <button class="pill dark" id="btn-cam" title="Cambiar cámara (V)"><span class="lbl">CÁMARA</span> <b id="cam-label">CINE</b><i class="dot"></i></button>
+      <button class="pill dark hide-s" id="btn-how">CÓMO FUNCIONA<i class="dot"></i></button>
+      <button class="pill light" id="btn-search" title="Buscar (/)">BUSCAR<i class="dots"><b></b><b></b></i></button>
+    </nav>
+  </header>
+
+  <section class="hero" id="hero">
+    <div class="crosses" aria-hidden="true"><span>+</span><span>+</span><span>+</span><span>+</span><span>+</span></div>
+    <div class="hero-grid">
+      <h1 class="hero-left">
+        <span class="line"><span>CUATRO BOBINAS</span></span>
+        <span class="line"><span>UNA CABINA</span></span>
+        <span class="line"><span>Y TU CANCIÓN</span></span>
+        <span class="line it"><span>HECHA DE RAYOS</span></span>
+      </h1>
+      <div class="hero-right">
+        <p class="lede mono">Un sótano en Nueva York, un millón de voltios y treinta segundos de música. Busca una canción: las bobinas la tocan disparando arcos contra la cabina.</p>
+        <button class="pill light big" id="cta">ELEGIR UNA CANCIÓN<i class="dots"><b></b><b></b></i></button>
+        <h2 class="it"><span class="line"><span>ELECTRICIDAD</span></span><span class="line"><span>QUE SE ESCUCHA</span></span></h2>
+      </div>
+    </div>
+  </section>
+
+  <section class="overlay" id="search" aria-hidden="true" aria-label="Buscar canción">
+    <div class="ov-head">
+      <span class="mono">01 — CATÁLOGO DE APPLE MUSIC</span>
+      <button class="round close" data-close aria-label="Cerrar">✕</button>
+    </div>
+    <input id="q" type="search" placeholder="ESCRIBE UNA CANCIÓN" autocomplete="off" spellcheck="false" aria-label="Canción o artista" />
+    <div class="chips" id="chips"></div>
+    <ol class="results" id="results"></ol>
+    <div class="ov-foot mono">
+      <span>Vistas previas de 30 s cortesía de Apple Music.</span>
+      <label class="file">¿Tienes un archivo de audio? <u>Súbelo</u><input type="file" id="file" accept="audio/*" hidden /></label>
+    </div>
+  </section>
+
+  <section class="overlay how" id="how" aria-hidden="true" aria-label="Cómo funciona">
+    <div class="ov-head">
+      <span class="mono">02 — CÓMO FUNCIONA</span>
+      <button class="round close" data-close aria-label="Cerrar">✕</button>
+    </div>
+    <div class="how-grid">
+      <article><span class="mono">01</span><h3>BUSCA</h3><p>Cualquier canción del catálogo de Apple Music. Se usa su vista previa oficial de 30 segundos.</p></article>
+      <article><span class="mono">02</span><h3 class="it">ESCUCHA</h3><p>Antes de sonar, la canción se analiza entera: graves, medios, voces y brillos, cada golpe y el pulso en BPM.</p></article>
+      <article><span class="mono">03</span><h3>DISPARA</h3><p>Cada bobina toca una banda. <b>I</b> graves · <b>II</b> medios · <b>III</b> voces · <b>IV</b> brillos. Cada golpe es un rayo contra la cabina.</p></article>
+      <article><span class="mono">04</span><h3 class="it">COLOREA</h3><p>Los colores de los rayos salen de la portada del álbum.</p></article>
+    </div>
+    <dl class="keys mono">
+      <div><dt>ESPACIO</dt><dd>Pausa: el tiempo se detiene</dd></div>
+      <div><dt>V</dt><dd>Cabina / cámara cinematográfica</dd></div>
+      <div><dt>W A S D</dt><dd>Caminar en modo cabina · arrastra para mirar</dd></div>
+      <div><dt>B</dt><dd>Timbre de bobina (sonido eléctrico)</dd></div>
+      <div><dt>/</dt><dd>Buscar otra canción</dd></div>
+      <div><dt>M</dt><dd>Sonido</dd></div>
+    </dl>
+  </section>
+
+  <div class="meters" id="meters" aria-hidden="true"></div>
+
+  <div class="hud" id="hud">
+    <div class="progress" id="progress" role="slider" aria-label="Posición" tabindex="0"><div class="beats" id="beats"></div><div class="fill" id="fill"></div><div class="head" id="head"></div></div>
+    <div class="hud-row">
+      <div class="track">
+        <div class="cover" id="cover"></div>
+        <div class="meta">
+          <div class="t-title" id="t-title"></div>
+          <div class="t-artist mono" id="t-artist"></div>
+        </div>
+      </div>
+      <div class="transport">
+        <button class="pill light play" id="btn-play"><span id="play-label">PAUSA</span><i class="dot"></i></button>
+        <span class="time mono" id="time">00:00.00</span>
+      </div>
+      <div class="tools">
+        <div class="swatches" id="swatches" title="Colores extraídos de la portada"></div>
+        <button class="pill dark" id="btn-coil" title="Timbre de bobina (B)">TIMBRE BOBINA<i class="dot"></i></button>
+        <a class="pill dark link" id="t-link" target="_blank" rel="noopener">APPLE MUSIC ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="freeze" id="freeze" aria-hidden="true">
+    <div class="f-big"><span>TIEMPO</span><span class="it">DETENIDO</span></div>
+    <div class="f-meta mono"><span id="f-time">00:00.00</span><span>ESPACIO PARA CONTINUAR</span></div>
+  </div>
+
+  <div class="hint mono" id="hint"></div>
+  <div class="toast mono" id="toast" role="status"></div>
+
+  <div class="busy" id="busy" aria-hidden="true">
+    <div class="busy-pct" id="busy-pct">0</div>
+    <div class="busy-label mono" id="busy-label">DESCARGANDO</div>
+  </div>
+
+  <div class="loader" id="loader">
+    <div class="ld-label mono">PREPARANDO EL SÓTANO</div>
+    <div class="ld-count" id="ld-count">0</div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
